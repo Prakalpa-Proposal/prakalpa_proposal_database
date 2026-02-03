@@ -33,6 +33,7 @@ erDiagram
         int id PK
         string name
         string url_slug
+        timestamp created_at
     }
 
     districts ||--o{ blocks : "has"
@@ -65,6 +66,11 @@ erDiagram
         string name
         int cluster_id FK
         string category
+        string management
+        string medium_of_instruction
+        text address
+        string pincode
+        string rating
         jsonb infrastructure
     }
 
@@ -74,27 +80,48 @@ erDiagram
         string lgd_code UK
         string name
         string district_name
+        string state_name
+        boolean active
     }
 
     village_demographics {
         int id PK
         int village_id FK
+        string lgd_code
         int total_population
+        int households
+        int sc_population
+        int st_population
+        int general_population
+        string source
+        timestamp fetched_at
     }
 
     organizations ||--o{ users : "has"
     organizations {
         int id PK
         string name
+        string url
         string email
+        string phone
         string poc_name
+        string address
+        string state
+        string district
+        string city
+        string pincode
+        jsonb domain
         boolean active
     }
 
     users {
         int id PK
         string userid UK
+        string password
+        string first_name
+        string last_name
         string email
+        string phone
         int org_id FK
         boolean active
     }
@@ -104,8 +131,16 @@ erDiagram
     proposal_master {
         uuid proposal_id PK
         int ngo_id FK
-        string status
+        string ngo_name
+        string domain
+        string sub_domain
         string location_village
+        string location_district
+        string location_state
+        bigint location_lgd_code
+        string status
+        timestamp created_at
+        timestamp updated_at
     }
 
     ai_response_metadata {
@@ -114,5 +149,17 @@ erDiagram
         string section_code
         int version
         text content
+        boolean is_active
+        string openai_response_id
+        string openai_model
+        string status
+        int input_tokens
+        int output_tokens
+        int total_tokens
+        string previous_response_id
+        decimal temperature
+        decimal top_p
+        text reasoning_summary
+        int generation_time_ms
     }
 ```
