@@ -1,279 +1,564 @@
--- Hierarchy Tables
+-- Prakalpa Proposal Database Initial Schema
+-- Consolidated Authoritative Version - 2026-02-06
 
-CREATE TABLE IF NOT EXISTS states (
+-- ==========================================
+-- 1. GEOGRAPHY & MASTER INFRASTRUCTURE
+-- ==========================================
+
+-- LGD Master (Authoritative Geography from data.gov.in)
+CREATE TABLE IF NOT EXISTS lgd_master (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    url_slug VARCHAR(255) NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    village_code VARCHAR(50) UNIQUE NOT NULL,
+    village_name TEXT,
+    subdistrict_code TEXT,
+    subdistrict_name TEXT,
+    district_code TEXT,
+    district_name TEXT,
+    state_code TEXT,
+    state_name TEXT,
+    pincode TEXT,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS districts (
+-- Regional Discovery: Village-Pincode Mapping
+CREATE TABLE IF NOT EXISTS village_pincode_mapping (
     id SERIAL PRIMARY KEY,
-    state_id INTEGER REFERENCES states(id),
-    name VARCHAR(255) NOT NULL,
-    url_slug VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(state_id, url_slug)
+    pincode TEXT NOT NULL,
+    village_name TEXT NOT NULL,
+    district_name TEXT NOT NULL,
+    state_name TEXT NOT NULL,
+    UNIQUE(pincode, village_name, district_name, state_name)
 );
 
-CREATE TABLE IF NOT EXISTS blocks (
-    id SERIAL PRIMARY KEY,
-    district_id INTEGER REFERENCES districts(id),
-    name VARCHAR(255) NOT NULL,
-    url_slug VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(district_id, url_slug)
+-- Sync Status for Background Jobs
+CREATE TABLE IF NOT EXISTS sync_status (
+    job_name TEXT PRIMARY KEY,
+    last_offset INTEGER DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS clusters (
-    id SERIAL PRIMARY KEY,
-    block_id INTEGER REFERENCES blocks(id),
-    name VARCHAR(255) NOT NULL,
-    url_slug VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(block_id, url_slug)
-);
+-- ==========================================
+-- 2. VILLAGE DATA & DEMOGRAPHICS
+-- ==========================================
 
--- Main School Data Table
-
-CREATE TABLE IF NOT EXISTS schools (
-    id SERIAL PRIMARY KEY,
-    udise_code VARCHAR(50) NOT NULL UNIQUE, -- Critical for deduplication
-    name VARCHAR(255) NOT NULL,
-    cluster_id INTEGER REFERENCES clusters(id),
-    
-    category VARCHAR(100),       -- e.g. "Primary only (1-5)"
-    management VARCHAR(100),     -- e.g. "Department of Education"
-    medium_of_instruction VARCHAR(100), -- e.g. "Kannada"
-    
-    address TEXT,
-    pincode VARCHAR(20),
-    
-    -- Review Ratings from source
-    rating VARCHAR(50), 
-    
-    -- Flexible Infrastructure Data (e.g. Classrooms: 1, Computers: 2)
-    infrastructure JSONB DEFAULT '{}'::jsonb,
-    
-    url_slug VARCHAR(255),
-    active BOOLEAN DEFAULT TRUE,
-    
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indexes for frequent queries
-CREATE INDEX idx_schools_cluster ON schools(cluster_id);
-CREATE INDEX idx_schools_udise ON schools(udise_code);
-CREATE INDEX idx_districts_state ON districts(state_id);
-
--- Create Villages Table (Master List)
+-- Existing Villages table (Application specific)
 CREATE TABLE IF NOT EXISTS villages (
     id SERIAL PRIMARY KEY,
-    lgd_code VARCHAR(20) UNIQUE NOT NULL,
+    lgd_code VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
-    district_name VARCHAR(255),
-    state_name VARCHAR(255),
+    district_name VARCHAR(100),
+    state_name VARCHAR(100),
     active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_villages_lgd_code ON villages(lgd_code);
-
--- Create Village Demographics Table (JJM Data)
+-- Village Demographics (Populated via JJM Scraper)
 CREATE TABLE IF NOT EXISTS village_demographics (
     id SERIAL PRIMARY KEY,
     village_id INTEGER REFERENCES villages(id),
-    lgd_code VARCHAR(20) NOT NULL,
+    lgd_code VARCHAR(50) UNIQUE,
     total_population INTEGER,
     households INTEGER,
     sc_population INTEGER,
     st_population INTEGER,
     general_population INTEGER,
-    source VARCHAR(50) DEFAULT 'JJM_LIVE_SCRAPER',
-    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status VARCHAR(20) DEFAULT 'SUCCESS'
+    source VARCHAR(100),
+    status VARCHAR(50), -- SUCCESS, FAILED, PENDING
+    fetched_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_village_demographics_lgd_code ON village_demographics(lgd_code);
+-- District Demographics (NDAP 9307 - District Level Context)
+CREATE TABLE IF NOT EXISTS district_demographics (
+    id SERIAL PRIMARY KEY,
+    state_name TEXT NOT NULL,
+    district_name TEXT NOT NULL,
+    year_code TEXT NOT NULL,
+    total_population INTEGER,
+    sc_population INTEGER,
+    st_population INTEGER,
+    general_population INTEGER,
+    source_file TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(state_name, district_name, year_code)
+);
 
--- Migration: Add User Login and Organization Management Tables
--- Date: 2026-02-01
+-- Village Amenities Raw (NDAP 7121 - Infrastructure Gaps)
+-- Detailed amenities for village-level research
+CREATE TABLE IF NOT EXISTS village_amenities_raw (
+    country TEXT,
+    state TEXT,
+    district TEXT,
+    sub_district TEXT,
+    ulb_rlb_village TEXT,
+    year TEXT,
+    name_of_the_subdistrict_head_quarter_of_village TEXT,
+    name_of_the_district_head_quarter_of_village TEXT,
+    name_of_the_nearest_statutory_town TEXT,
+    nearest_government_or_private_pre_primary_school_facility TEXT,
+    nearest_location_with_pre_primary_school_facility_if_not_a TEXT,
+    distance_to_the_nearest_location_with_pre_primary_school_fac TEXT,
+    nearest_government_or_private_primary_school_facility TEXT,
+    nearest_location_with_primary_school_facility_if_not_availa TEXT,
+    distance_to_the_nearest_location_with_primary_school_facilit TEXT,
+    nearest_government_or_private_medical_school_facility TEXT,
+    nearest_location_with_middle_school_facility_if_not_availab TEXT,
+    distance_to_the_nearest_location_with_middle_school_facility TEXT,
+    nearest_government_or_private_secondary_school_facility TEXT,
+    nearest_location_with_secondary_school_facility_if_not_avai TEXT,
+    distance_to_the_nearest_location_with_secondary_school_facil TEXT,
+    nearest_government_or_private_senior_secondary_school_facili TEXT,
+    nearest_location_with_senior_secondary_school_facility_if_n TEXT,
+    distance_to_the_nearest_location_with_senior_secondary_schoo TEXT,
+    nearest_government_or_private_arts_and_science_degree_colleg TEXT,
+    nearest_location_with_arts_and_science_degree_college_facili TEXT,
+    distance_to_the_nearest_location_with_arts_and_science_degre TEXT,
+    nearest_government_or_private_engineering_college_facility TEXT,
+    nearest_location_with_engineering_college_facility_if_not_a TEXT,
+    distance_to_the_nearest_location_with_engineering_college_fa TEXT,
+    nearest_government_or_private_medical_college_facility TEXT,
+    nearest_location_with_medical_college_facility_if_not_avail TEXT,
+    distance_to_the_nearest_location_with_medical_college_facili TEXT,
+    nearest_governmnet_or_private_management_institute_facility TEXT,
+    nearest_locationwith_management_institute_facility_if_not_a TEXT,
+    distance_to_the_nearest_location_with_management_institute_f TEXT,
+    nearest_government_or_private_polytechnic_college_facility TEXT,
+    nearest_location_with_polytechnic_college_facility_if_not_a TEXT,
+    distance_to_the_nearest_location_with_polytechnic_college_fa TEXT,
+    nearest_government_or_private_vocational_training_school_or_ TEXT,
+    nearest_location_with_vocational_training_school_or_iti_faci TEXT,
+    distance_to_the_nearest_location_with_vocational_training_sc TEXT,
+    nearest_government_or_private_non_formal_training_center_fac TEXT,
+    nearest_location_with_non_formal_training_center_facility_i TEXT,
+    distance_to_the_nearest_location_with_non_formal_training_ce TEXT,
+    nearest_government_or_private_school_for_disabled_facility TEXT,
+    nearest_location_with_school_for_disabled_facility_if_not_a TEXT,
+    distance_to_the_nearest_location_with_school_for_disabled_fa TEXT,
+    nearest_other_government_or_private_educational_facility TEXT,
+    nearest_location_with_other_educational_facility_if_not_ava TEXT,
+    distance_to_the_nearest_location_with_other_education_facili TEXT,
+    distance_to_the_nearest_location_with_community_health_centr TEXT,
+    distance_to_the_nearest_location_with_primary_health_centre_ TEXT,
+    distance_to_the_nearest_location_with_primary_heallth_sub_ce TEXT,
+    distance_to_the_nearest_location_with_maternity_and_child_we TEXT,
+    distance_to_the_nearest_location_with_tuberculosis_tb_clinic TEXT,
+    distance_to_nearest_location_with_allopathic_hospital_if_no TEXT,
+    distance_to_the_nearest_location_with_alternative_medicine_h TEXT,
+    distance_to_nearest_location_with_dispensary_if_not_availab TEXT,
+    distance_to_the_nearest_location_with_veterinary_hospital_if TEXT,
+    distance_to_the_nearest_location_with_mobile_health_clinic_i TEXT,
+    distance_to_the_nearest_location_with_family_welfare_center_ TEXT,
+    number_of_villages_with_filtered_tap_water TEXT,
+    number_of_villages_with_filtered_tap_water_functioning_all_o TEXT,
+    number_of_villages_with_filtered_tap_water_functioning_in_su TEXT,
+    number_of_villages_with_unfiltered_tap_water TEXT,
+    number_of_villages_with_unfiltered_tap_water_functioning_all TEXT,
+    number_of_villages_with_unfiltered_tap_water_functioning_in_ TEXT,
+    number_of_villages_with_covered_wells TEXT,
+    number_of_villages_with_covered_wells_functioning_all_over_t TEXT,
+    number_of_villages_with_covered_wells_functioning_in_summer_ TEXT,
+    number_of_villages_with_uncovered_wells TEXT,
+    number_of_villages_with_filtered_uncovered_wells_functioning TEXT,
+    number_of_villages_with_uncovered_wells_functioning_in_summe TEXT,
+    number_of_villages_with_hand_pumps TEXT,
+    number_of_villages_with_filtered_hand_pumps_functioning_all_ TEXT,
+    number_of_villages_with_filtered_hand_pumps_functioning_in_s TEXT,
+    number_of_villages_with_tube_and_borehole_wells TEXT,
+    number_of_villages_with_tube_and_borehole_wells_functioning_ TEXT,
+    number_of_villages_with_tube_and_borehole_wells_functioning_2 TEXT,
+    number_of_villages_with_spring TEXT,
+    number_of_villages_with_spring_functioning_all_over_the_year TEXT,
+    number_of_villages_with_spring_functioning_in_summer_months_ TEXT,
+    number_of_villages_with_river_canals TEXT,
+    number_of_villages_with_river_canals_functioning_all_over_th TEXT,
+    number_of_villages_with_river_canals_functioning_in_summer_m TEXT,
+    number_of_villages_with_tanks_ponds_or_lakes TEXT,
+    number_of_villages_with_tanks_ponds_or_lakes_functioning_all TEXT,
+    number_of_villages_with_tanks_ponds_or_lakes_functioning_in_ TEXT,
+    number_of_villages_with_other_water_functionings TEXT,
+    number_of_villages_with_other_water_functionings_all_over_th TEXT,
+    number_of_villages_with_other_water_functionings_in_summer_m TEXT,
+    number_of_villages_with_closed_drainage TEXT,
+    number_of_villages_with_open_drainage TEXT,
+    number_of_villages_with_no_drainage TEXT,
+    number_of_villages_with_open_pucca_drainage_covered_with_til TEXT,
+    number_of_villages_with_open_pucca_drainage_uncovered TEXT,
+    number_of_villages_with_open_kuccha_drainage TEXT,
+    discharge_of_drain_water_into_water_bodies_or_to_a_sewer_pla TEXT,
+    area_covered_under_total_sanitation_campaign_tsc TEXT,
+    number_of_villages_with_community_toilet_complex_including_b TEXT,
+    number_of_villages_with_community_toilet_complex_excluding_b TEXT,
+    number_of_villages_with_rural_production_centres_or_sanitary TEXT,
+    number_of_villages_with_rural_production_mart_or_sanitary_ha TEXT,
+    number_of_villages_with_community_waste_disposal_system_afte TEXT,
+    number_of_villages_with_community_bio_gas_or_recycle_of_wast TEXT,
+    number_of_villages_with_no_system_garbage_on_road_street TEXT,
+    number_of_villages_with_post_office TEXT,
+    distance_to_the_nearest_location_with_post_office_if_not_ava TEXT,
+    number_of_villages_with_sub_post_office TEXT,
+    distance_to_the_nearest_location_with_sub_post_office_if_not TEXT,
+    number_of_villages_with_post_and_telegraph_office TEXT,
+    distance_to_the_nearest_village_or_town_name_with_post_and_t TEXT,
+    number_of_villages_with_village_pin_code TEXT,
+    distance_to_the_nearest_location_with_village_pin_code_if_no TEXT,
+    postal_index_number_pin_code_of_the_village TEXT,
+    number_of_villages_with_telephone_landlines TEXT,
+    distance_to_the_nearest_location_with_telephone_landlines_if TEXT,
+    number_of_villages_with_public_call_office_mobile_pco TEXT,
+    distance_to_the_nearest_location_with_public_call_office_mob TEXT,
+    number_of_villages_with_mobile_phone_coverage TEXT,
+    distance_to_the_nearest_location_with_mobile_phone_coverage_ TEXT,
+    number_of_villages_with_internet_cafes_common_service_centre TEXT,
+    distance_to_the_nearest_location_with_internet_cafes_common_ TEXT,
+    number_of_villages_with_private_courier_facility TEXT,
+    distance_to_the_nearest_location_with_private_courier_facili TEXT,
+    number_of_villages_with_public_bus_service TEXT,
+    distance_to_the_nearest_location_with_public_bus_service_if_ TEXT,
+    number_of_villages_with_private_bus_service TEXT,
+    distance_to_the_nearest_location_with_private_bus_service_if TEXT,
+    number_of_villages_with_railway_stations TEXT,
+    distance_to_the_nearest_village_or_town_name_with_railway_st TEXT,
+    number_of_villages_with_auto_modified_autos TEXT,
+    distance_to_the_nearest_location_with_auto_modified_autos_if TEXT,
+    number_of_villages_with_taxies TEXT,
+    distance_to_the_nearest_location_with_taxi_if_not_available_ TEXT,
+    number_of_villages_with_vans TEXT,
+    distance_to_the_nearest_location_with_vans_if_not_available_ TEXT,
+    number_of_villages_with_tractors TEXT,
+    distance_to_the_nearest_location_with_tractors_if_not_availa TEXT,
+    number_of_villages_with_cycle_pulled_rickshaws_manual_driven TEXT,
+    distance_to_the_nearest_location_with_cycle_pulled_rickshaws TEXT,
+    number_of_villages_with_cycle_pulled_rickshaws_machine_drive TEXT,
+    distance_to_the_nearest_location_with_cycle_pulled_rickshaws_2 TEXT,
+    number_of_villages_with_carts_drivens_by_animals TEXT,
+    distance_to_the_nearest_location_with_carts_drivens_by_anima TEXT,
+    number_of_villages_with_sea_river_ferry_service TEXT,
+    distance_to_the_nearest_location_with_sea_river_ferry_servic TEXT,
+    number_of_villages_with_national_highway TEXT,
+    distance_to_the_nearest_national_highway_if_not_available_wi TEXT,
+    number_of_villages_with_state_highway TEXT,
+    distance_to_the_nearest_state_highway_if_not_available_withi TEXT,
+    number_of_villages_with_major_district_roads TEXT,
+    distance_to_the_nearest_major_district_road_if_not_available TEXT,
+    number_of_villages_with_other_district_roads TEXT,
+    distance_to_the_nearest_other_district_road_if_not_available TEXT,
+    number_of_villages_with_black_topped_pucca_roads TEXT,
+    distance_to_the_nearest_black_topped_pucca_road_if_not_avail TEXT,
+    number_of_villages_with_gravel_kuchha_roads TEXT,
+    distance_to_the_nearest_gravel_kuchha_roads_if_not_available TEXT,
+    number_of_villages_with_water_bounded_macadam_type_of_road TEXT,
+    distance_to_the_nearest_water_bounded_macadam_if_not_availab TEXT,
+    number_of_villages_with_all_weather_road TEXT,
+    distance_to_the_nearest_all_weather_road_if_not_available_wi TEXT,
+    number_of_villages_with_navigable_waterways_river_canals TEXT,
+    distance_to_the_nearest_navigable_waterways_river_canal_if_n TEXT,
+    number_of_villages_with_footpath TEXT,
+    distance_to_the_nearest_foothpath_if_not_available_within_th TEXT,
+    number_of_villages_with_atms TEXT,
+    distance_to_the_nearest_atm_if_not_available_within_the_vill TEXT,
+    number_of_villages_with_commercial_banks TEXT,
+    distance_to_the_nearest_commercial_bank_if_not_available_wit TEXT,
+    number_of_villages_with_cooperative_banks TEXT,
+    distance_to_the_nearest_cooperative_bank_if_not_available_wi TEXT,
+    number_of_villages_with_agricultural_credit_societies TEXT,
+    distance_to_the_nearest_agricultural_credit_societies_if_not TEXT,
+    number_of_villages_with_self_help_group_shg TEXT,
+    distance_to_the_nearest_self_help_group_shg_if_not_available TEXT,
+    number_of_villages_with_public_distribution_system_pds_shops TEXT,
+    distance_to_the_nearest_public_distribution_system_pds_shop_ TEXT,
+    number_of_villages_with_mandis_regular_market TEXT,
+    distance_to_the_nearest_mandis_regular_market_if_not_availab TEXT,
+    number_of_villages_with_weekly_haat TEXT,
+    distance_to_the_nearest_weekly_haat_if_not_available_within_ TEXT,
+    number_of_villages_with_agricultural_marketing_society TEXT,
+    distance_to_the_nearest_agricultural_marketing_society_if_no TEXT,
+    number_of_villages_with_nutritional_centres_integrated_child TEXT,
+    distance_to_the_nearest_nutritional_centres_integrated_child TEXT,
+    number_of_villages_with_nutritional_centres_anganwadi_centres TEXT,
+    distance_to_nearest_nutritional_centres_anganwadi_centres_if TEXT,
+    number_of_villages_with_other_nutritional_centres TEXT,
+    distance_to_the_nearest_other_nutritional_centres_if_not_ava TEXT,
+    number_of_villages_with_accredited_social_health_activist_as TEXT,
+    distance_to_the_nearest_accredited_social_health_activist_as TEXT,
+    number_of_villages_with_community_centre_with_or_without_tv TEXT,
+    distance_to_nearest_community_centre_with_or_without_tv_if_n TEXT,
+    number_of_villages_with_sports_field TEXT,
+    distance_to_the_nearest_sports_field_if_not_available_within TEXT,
+    number_of_villages_with_sports_club_recreation_centres TEXT,
+    distance_to_the_nearest_sports_club_recreation_centre_if_not TEXT,
+    number_of_villages_with_cinema_video_halls TEXT,
+    distance_to_the_nearest_cinema_video_hall_if_not_available_w TEXT,
+    number_of_villages_with_custom_public_library TEXT, -- Renamed to avoid reserved words
+    distance_to_the_nearest_public_library_if_not_available_with TEXT,
+    number_of_villages_with_public_reading_rooms TEXT,
+    distance_to_the_nearest_public_reading_room_if_not_available TEXT,
+    number_of_villages_with_daily_newspaper_supply TEXT,
+    distance_to_the_nearest_daily_newspaper_supply_if_not_availa TEXT,
+    number_of_villages_with_assembly_polling_station TEXT,
+    distance_to_the_nearest_assembly_polling_station_if_not_avai TEXT,
+    number_of_villages_with_birth_and_death_registration_office TEXT,
+    distance_to_the_nearest_birth_and_death_registration_office_ TEXT,
+    number_of_villages_with_power_supply_for_domestic_use TEXT,
+    number_of_hours_of_power_supply_for_domestic_use_in_summer_f TEXT,
+    number_of_hours_of_power_supply_for_domestic_use_from_winter TEXT,
+    number_of_villages_with_power_supply_for_agricultural_use TEXT,
+    number_of_hours_of_power_supply_for_agricultural_use_in_summ TEXT,
+    number_of_hours_of_power_supply_for_agricultural_use_in_wint TEXT,
+    number_of_villages_with_power_supply_for_commercial_use TEXT,
+    number_of_hours_of_power_supply_for_commercial_use_in_summer TEXT,
+    number_of_hours_of_power_supply_for_commercial_use_in_winter TEXT,
+    number_of_villages_with_power_supply_for_all_users TEXT,
+    number_of_hours_of_power_supply_for_all_users_in_summer_from TEXT,
+    first_agricultural_commodities_the_village TEXT,
+    first_manufactural_commodities_in_the_village TEXT,
+    first_handicrafts_commodities_in_the_village TEXT,
+    second_agricultural_commodities_the_village TEXT,
+    second_manufactural_commodities_in_the_village TEXT,
+    second_handicrafts_commodities_in_the_village TEXT,
+    third_agricultural_commodities_the_village TEXT,
+    third_manufactural_commodities_in_the_village TEXT,
+    third_handicrafts_commodities_in_the_village TEXT,
+    distance_between_village_and_sub_district_head_quarter TEXT,
+    distance_between_the_village_and_district_head_quarter TEXT,
+    distance_between_village_and_nearest_statutory_town TEXT,
+    total_geographical_area_covered_by_village TEXT,
+    number_of_village_households TEXT,
+    rural_population TEXT,
+    male_rural_population TEXT,
+    female_rural_population TEXT,
+    scheduled_castes_rural_population TEXT,
+    scheduled_castes_male_rural_population TEXT,
+    scheduled_castes_female_rural_population TEXT,
+    scheduled_tribes_rural_population TEXT,
+    scheduled_tribes_male_rural_population TEXT,
+    scheduled_tribes_female_rural_population TEXT,
+    number_of_villages_with_government_pre_primary_schools TEXT,
+    number_of_government_pre_primary_schools TEXT,
+    number_of_villages_with_private_pre_primary_schools TEXT,
+    number_of_private_pre_primary_schools TEXT,
+    number_of_villages_with_government_primary_schools TEXT,
+    number_of_government_primary_schools TEXT,
+    number_of_villages_with_private_primary_schools TEXT,
+    number_of_private_primary_schools TEXT,
+    number_of_villages_with_government_middle_schools TEXT,
+    number_of_government_middle_schools TEXT,
+    number_of_villages_with_private_middle_schools TEXT,
+    number_of_private_middle_schools TEXT,
+    number_of_villages_with_government_secondary_schools TEXT,
+    number_of_government_secondary_schools TEXT,
+    number_of_villages_with_private_secondary_schools TEXT,
+    number_of_private_secondary_schools TEXT,
+    number_of_villages_with_government_senior_secondary_schools TEXT,
+    number_of_government_senior_secondary_schools TEXT,
+    number_of_villages_with_private_senior_secondary_schools TEXT,
+    number_of_private_senior_secondary_schools TEXT,
+    number_of_villages_with_government_arts_and_science_degree_c TEXT,
+    number_of_government_arts_and_science_degree_colleges TEXT,
+    number_of_villages_with_private_arts_and_science_degree_coll TEXT,
+    number_of_private_arts_and_science_degree_colleges TEXT,
+    number_of_villages_with_government_engineering_colleges TEXT,
+    number_of_government_engineering_colleges TEXT,
+    number_of_villages_with_private_engineering_colleges TEXT,
+    number_of_private_engineering_colleges TEXT,
+    number_of_villages_with_government_medical_colleges TEXT,
+    number_of_government_medical_colleges TEXT,
+    number_of_villages_with_private_medical_college TEXT,
+    number_of_private_medical_colleges TEXT,
+    number_of_villages_with_government_management_institutes TEXT,
+    number_of_government_management_institutes TEXT,
+    number_of_villages_with_private_management_institutes TEXT,
+    number_of_private_management_institutes TEXT,
+    number_of_villages_with_government_polytechnic_colleges TEXT,
+    number_of_government_polytechnic_colleges TEXT,
+    number_of_villages_with_private_polytechnic_colleges TEXT,
+    number_of_private_polytechnic_colleges TEXT,
+    villages_with_government_vocational_training_schools_or_indu TEXT,
+    number_of_government_vocational_training_school_or_industria TEXT,
+    number_of_villages_with_private_vocational_training_school_o TEXT,
+    number_of_private_vocational_training_school_or_industrial_t TEXT,
+    number_of_villages_with_government_non_formal_training_cente TEXT,
+    number_of_government_non_formal_training_centres TEXT,
+    number_of_villages_with_private_non_formal_training_centers TEXT,
+    number_of_private_non_formal_training_centres TEXT,
+    number_of_villages_with_government_schools_for_disabled TEXT,
+    number_of_government_schools_for_disabled TEXT,
+    number_of_villages_with_private_schools_for_disabled TEXT,
+    number_of_private_schools_for_disabled TEXT,
+    number_of_villages_with_other_government_educational_facilit TEXT,
+    number_of_government_other_educational_facilities TEXT,
+    number_of_villages_with_other_private_educational_facilities TEXT,
+    number_of_other_private_educational_facilities TEXT,
+    number_of_community_health_centers TEXT,
+    number_of_doctors_in_community_health_centres TEXT,
+    number_of_doctors_available_in_community_health_centres TEXT,
+    number_of_para_medical_staff_in_community_health_centres TEXT,
+    number_of_para_medical_staff_available_in_community_health_c TEXT,
+    number_of_primary_health_centers TEXT,
+    number_of_doctors_in_primary_health_care_centres TEXT,
+    number_of_doctors_available_in_primary_health_care_centres TEXT,
+    number_of_para_medical_staff_in_primary_health_care_centres TEXT,
+    number_of_para_medical_staff_available_in_primary_health_car TEXT,
+    number_of_primary_health_sub_centers TEXT,
+    number_of_doctors_in_primary_health_sub_centers TEXT,
+    number_of_doctors_available_in_primary_health_sub_centers TEXT,
+    number_of_para_medical_staff_in_primary_heallth_sub_centre TEXT,
+    number_of_para_medical_staff_available_in_primary_heallth_su TEXT,
+    number_of_maternity_and_child_welfare_centres TEXT,
+    number_of_doctors_in_maternity_and_child_welfare_centres TEXT,
+    number_of_doctors_available_in_maternity_and_child_welfare_c TEXT,
+    number_of_para_medical_staff_in_maternity_and_child_welfare_ TEXT,
+    number_of_para_medical_staff_available_in_maternity_and_chil TEXT,
+    number_of_tuberculosis_tb_clinics TEXT,
+    number_of_doctors_in_tb_clinics TEXT,
+    number_of_doctors_available_in_tb_clinics TEXT,
+    number_of_para_medical_staff_in_tuberculosis_tb_clinics TEXT,
+    number_of_para_medical_staff_available_in_tuberculosis_tb_cl TEXT,
+    number_of_allopathic_hospitals TEXT,
+    number_of_doctors_in_allopathic_hospitals TEXT,
+    number_of_doctors_available_in_allopathic_hospitals TEXT,
+    number_of_para_medical_staff_in_allopathic_hospitals TEXT,
+    number_of_para_medical_staff_available_in_allopathic_hospita TEXT,
+    number_of_alternative_medicine_hospitals TEXT,
+    number_of_doctors_in_alternative_medicine_hospitals TEXT,
+    number_of_doctors_available_in_alternative_medicine_hospital TEXT,
+    number_of_para_medical_staff_in_alternative_medicine_hospita TEXT,
+    number_of_para_medical_staff_available_in_alternative_medici TEXT,
+    number_of_dispensaries TEXT,
+    number_of_doctors_at_dispensaries TEXT,
+    number_of_doctors_available_at_dispensaries TEXT,
+    number_of_para_medical_staff_at_dispensaries TEXT,
+    number_of_para_medical_staff_available_at_dispensaries TEXT,
+    number_of_veterinary_hospitals TEXT,
+    number_of_doctors_at_veterinary_hospitals TEXT,
+    number_of_doctors_available_at_veterinary_hospitals TEXT,
+    number_of_para_medical_staff_at_veternity_hospitals TEXT,
+    number_of_para_medical_staff_available_at_veternity_hospital TEXT,
+    number_of_mobile_health_clinics TEXT,
+    number_of_doctors_at_mobile_health_clinics TEXT,
+    number_of_doctors_available_at_mobile_health_clinics TEXT,
+    number_of_para_medical_staff_at_mobile_health_clinics TEXT,
+    number_of_para_medical_staff_available_at_mobile_health_clin TEXT,
+    number_of_family_welfare_centers TEXT,
+    number_of_doctors_in_family_welfare_centers TEXT,
+    number_of_doctors_available_in_family_welfare_centers TEXT,
+    number_of_para_medical_staff_in_family_welfare_centers TEXT,
+    number_of_para_medical_staff_available_in_family_welfare_cen TEXT,
+    number_of_non_government_medical_facilities_having_out_patie TEXT,
+    number_of_non_government_medical_facilities_having_in_patien TEXT,
+    number_of_non_government_charitable_medical_facilities TEXT,
+    number_of_non_government_medical_practitioners_with_mbbs_deg TEXT,
+    number_of_non_government_medical_practitioners_with_other_de TEXT,
+    number_of_non_government_medical_practitioners_with_no_degre TEXT,
+    number_of_non_government_traditional_and_faith_healers TEXT,
+    number_of_non_government_medicine_or_medical_shops TEXT,
+    number_of_other_non_government_medical_facilities TEXT,
+    number_of_hours_of_power_supply_for_all_users_in_winter_from TEXT,
+    forest_land_area_uom_ha_hectare TEXT,
+    land_area_under_non_agricultural_uses_uom_ha_hectare TEXT,
+    barren_and_un_cultivable_land_area_in_hectare_uom_ha_hectare TEXT,
+    permanent_pastures_and_other_grazing_land_area_uom_ha_hectar TEXT,
+    land_area_under_miscellaneous_tree_crops_etc_uom_ha_hectare TEXT,
+    culturable_waste_land_area_uom_ha_hectare TEXT,
+    fallows_land_other_than_current_fallows_area_uom_ha_hectare TEXT,
+    current_fallows_land_area_uom_ha_hectare TEXT,
+    net_land_area_sown_uom_ha_hectare TEXT,
+    total_unirrigated_land_area_uom_ha_hectare TEXT,
+    land_area_irrigated_by_sources_uom_ha_hectare TEXT,
+    total_land_area_irrigated_by_canals_uom_ha_hectare TEXT,
+    total_land_area_covered_by_wells_or_tube_wells_uom_ha_hectar TEXT,
+    total_land_area_irrigated_by_tanks_or_lakes_uom_ha_hectare TEXT,
+    total_land_area_irrigated_by_waterfalls_uom_ha_hectare TEXT,
+    total_land_area_irrigated_by_other_water_sources_specify_uom TEXT
+);
 
--- 1. Organizations Table
+-- ==========================================
+-- 3. APPLICATION DOMAIN & PROPOSALS
+-- ==========================================
+
+-- Organizations (NGOs)
 CREATE TABLE IF NOT EXISTS organizations (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(500) NOT NULL,
-    url VARCHAR(500),
-    email VARCHAR(150),
-    phone VARCHAR(20) NOT NULL,
-    poc_name VARCHAR(100) NOT NULL,
-    address VARCHAR(500),
-    state VARCHAR(100),
-    district VARCHAR(100),
-    city VARCHAR(100),
-    pincode VARCHAR(20),
-    domain JSONB, -- Storing domain as JSONB for flexibility
-    active BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255)
+    name VARCHAR(255) NOT NULL,
+    domain VARCHAR(100), -- Primary domain like 'Education', 'Water', etc.
+    logo_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_organizations_name ON organizations(name);
-
--- 2. Users Table
+-- Users
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    userid VARCHAR(20) NOT NULL,
-    password VARCHAR(255) NOT NULL, -- Hashed password
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
     org_id INTEGER REFERENCES organizations(id),
-    active BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255)
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    full_name VARCHAR(100),
+    role VARCHAR(50) DEFAULT 'USER',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_userid ON users(userid);
-CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(org_id);
-
--- 3. Default Organization Entry
-INSERT INTO organizations (
-    id, name, url, email, phone, poc_name, address, 
-    state, district, city, pincode, domain, active, created_by
-) VALUES (
-    1, 
-    'Prakalpa Soujanya Foundation', 
-    'https://www.prakalpasooujanya.g', 
-    'contact@prakalpasoujanya.org', 
-    '+91 9845024536', 
-    'Vijay Paul', 
-    'Indiranagar', 
-    'Karnataka', 
-    'Bangalore Urban', 
-    'Bangalore', 
-    '560038', 
-    '"Social Sector Project Management"', -- JSONB string
-    TRUE,
-    'SYSTEM'
-) ON CONFLICT (id) DO NOTHING;
-
--- 4. Default Admin User Entry
--- Password: admin123 (hashed with bcrypt)
-INSERT INTO users (
-    id, userid, password, first_name, last_name, email, 
-    phone, org_id, active, created_by
-) VALUES (
-    1,
-    'admin',
-    '$2b$12$1djn./SUAcvUYO3Yx7eUKOAxzmNtfwUpdeAV89DovnUU4g60FFOyq',
-    'Prakalpa',
-    'Administrator',
-    'contact@prakalpasoujanya.org',
-    '+91 9845024536', -- Using Org phone as default for admin
-    1,
-    TRUE,
-    'SYSTEM'
-) ON CONFLICT (id) DO NOTHING;
-
--- Reset sequence to avoid collision if id 1 was forced
-SELECT setval('organizations_id_seq', (SELECT MAX(id) FROM organizations));
-SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
-
--- Migration: Add Proposal Master & Section Metadata Tables
--- Author: Antigravity AI
--- Date: 2026-02-01
-
--- Table 1: Proposal Master (Multi-NGO Support)
+-- Proposal Master (Consolidated Header)
 CREATE TABLE IF NOT EXISTS proposal_master (
-    proposal_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ngo_id INTEGER REFERENCES organizations(id), -- UPDATED to Integer FK
-    ngo_name VARCHAR(255) NOT NULL,
-    domain VARCHAR(50) NOT NULL,
-    sub_domain VARCHAR(100),
-    location_village VARCHAR(255),
-    location_district VARCHAR(255),
-    location_state VARCHAR(255),
-    location_lgd_code BIGINT,
-    document_name VARCHAR(500),
-    document_url TEXT,
-    status VARCHAR(50) DEFAULT 'draft',
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    created_by VARCHAR(255)
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    org_id INTEGER REFERENCES organizations(id),
+    title VARCHAR(255) NOT NULL,
+    summary TEXT,
+    total_budget DECIMAL(15, 2),
+    status VARCHAR(50) DEFAULT 'DRAFT', -- DRAFT, FINALIZED, ARCHIVED
+    granularity VARCHAR(50) DEFAULT 'VILLAGE', -- VILLAGE, CLUSTER, BLOCK, DISTRICT
+    target_beneficiaries VARCHAR(255),
+    tags JSONB DEFAULT '[]', -- Cross-domain relevance tags
+    full_content JSONB, -- Storage for all section data
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_proposal_ngo ON proposal_master(ngo_id);
-CREATE INDEX IF NOT EXISTS idx_proposal_domain ON proposal_master(domain);
-CREATE INDEX IF NOT EXISTS idx_proposal_created ON proposal_master(created_at);
+-- Proposal Targets (Regional Coverage)
+CREATE TABLE IF NOT EXISTS proposal_targets (
+    id SERIAL PRIMARY KEY,
+    proposal_id INTEGER REFERENCES proposal_master(id) ON DELETE CASCADE,
+    state_name TEXT NOT NULL,
+    district_name TEXT NOT NULL,
+    block_name TEXT,
+    village_name TEXT,
+    lgd_code TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
--- Table 2: AI Response Metadata (Responses API fields)
+-- AI Response Metadata (For refining prompts)
 CREATE TABLE IF NOT EXISTS ai_response_metadata (
-    id BIGSERIAL PRIMARY KEY,
-    proposal_id UUID NOT NULL REFERENCES proposal_master(proposal_id) ON DELETE CASCADE,
-    section_code VARCHAR(100) NOT NULL,
-    version INT NOT NULL DEFAULT 1,
-    content TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    
-    -- OpenAI Responses API Metadata
-    openai_response_id VARCHAR(255),
-    openai_model VARCHAR(100),
-    created_at_openai BIGINT,
-    status VARCHAR(50),
-    completed_at_openai BIGINT,
-    error_message TEXT,
-    
-    -- Token Usage (Responses API naming)
-    input_tokens INT,
-    output_tokens INT,
-    total_tokens INT,
-    
-    -- Context Chaining
-    previous_response_id VARCHAR(255),
-    
-    -- Configuration
-    temperature DECIMAL(3,2),
-    top_p DECIMAL(3,2),
-    
-    -- Reasoning
-    reasoning_summary TEXT,
-    
-    -- Internal Metadata
-    generation_time_ms INT,
-    created_at TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY,
+    proposal_id INTEGER REFERENCES proposal_master(id),
+    section_key VARCHAR(100),
+    prompt_version VARCHAR(50),
+    tokens_used INTEGER,
+    response_time_ms INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_ai_response_proposal ON ai_response_metadata(proposal_id, section_code);
-CREATE INDEX IF NOT EXISTS idx_ai_response_active ON ai_response_metadata(proposal_id, section_code, is_active) WHERE is_active = TRUE;
-CREATE INDEX IF NOT EXISTS idx_ai_response_prev_id ON ai_response_metadata(previous_response_id);
+-- ==========================================
+-- 4. SEED DATA & TRIGGERS
+-- ==========================================
 
--- Constraint: Only one active version per section
-CREATE UNIQUE INDEX IF NOT EXISTS unique_active_section 
-ON ai_response_metadata(proposal_id, section_code) 
-WHERE is_active = TRUE;
+-- Default Organization
+INSERT INTO organizations (name, domain) 
+VALUES ('Tech4SocialGood', 'Technology & Innovation')
+ON CONFLICT DO NOTHING;
 
--- Trigger: Auto-cleanup old versions (keep max 5)
-CREATE OR REPLACE FUNCTION cleanup_old_versions()
+-- Default Admin User (Password: admin123 - for dev only)
+INSERT INTO users (org_id, email, password_hash, full_name, role)
+VALUES (1, 'admin@tech4socialgood.org', 'pbkdf2:sha256:600000$admin_hash_placeholder', 'Admin User', 'ADMIN')
+ON CONFLICT DO NOTHING;
+
+-- Update Trigger for proposal_master
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    DELETE FROM ai_response_metadata
-    WHERE proposal_id = NEW.proposal_id
-      AND section_code = NEW.section_code
-      AND id NOT IN (
-          SELECT id FROM ai_response_metadata
-          WHERE proposal_id = NEW.proposal_id
-            AND section_code = NEW.section_code
-          ORDER BY version DESC
-          LIMIT 5
-      );
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ language 'plpgsql';
 
-DROP TRIGGER IF EXISTS trigger_cleanup_versions ON ai_response_metadata;
-CREATE TRIGGER trigger_cleanup_versions
-AFTER INSERT ON ai_response_metadata
-FOR EACH ROW EXECUTE FUNCTION cleanup_old_versions();
+CREATE TRIGGER update_proposal_master_updated_at
+    BEFORE UPDATE ON proposal_master
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();

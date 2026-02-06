@@ -1,2 +1,4 @@
 data/
 migrations/
+.env
+source_data_files/

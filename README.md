@@ -3,24 +3,46 @@
 This repository contains the database initialization scripts for the Prakalpa Proposal application.
 
 ## Contents
-- `init.sql`: Main entry point for PostgreSQL initialization. Creates tables and default data.
+- `init.sql`: Main entry point for PostgreSQL initialization.
+- `scripts/`: Python and Shell scripts for the "Foundation Data" strategy (Geography, Demographics, and Amenities).
+- `data/`: Local storage for processed datasets.
 
 ## 📊 Database Schema
 
-The system uses PostgreSQL with the following main tables:
+The system follows a **Foundation Data** strategy, pre-populating geography and social infrastructure intelligence:
 
 **Core Persistence:**
-- `proposal_master` - Top-level session tracking for proposals
-- `ai_response_metadata` - Stores every AI generation (versioned) with token usage and context chaining
+- `proposal_master` - Session tracking with cross-domain `tags` for context enrichment.
+- `ai_response_metadata` - Versioned AI content with Responses API metadata.
 
-**Domain Data:**
-- `states` - Indian states
-- `districts` - Districts within states
-- `blocks` - Administrative blocks
-- `clusters` - School clusters
-- `schools` - Individual school records with demographic data
-- `jjm_population_data` - Population data from Jal Jeevan Mission
+**Foundation Data:**
+- `states`, `districts`, `blocks`, `clusters` - Hierarchical geography.
+- `villages` - Master record for habitations with unique LGD codes.
+- `village_demographics` - SC/ST population, household stats, and growth trends from NDAP.
+- `schools` - Granular infrastructure and enrollment data.
 
+**Domain Data Summary:**
+- `jjm_population_data` - Population data from Jal Jeevan Mission.
+
+
+## 🚀 Data Foundation Setup
+
+Before generating proposals, you must initialize the geographic and demographic foundation:
+
+1. **Initialize LGD Hierarchy**:
+   ```bash
+   cd scripts
+   python fetch_lgd_master.py  # Fetches latest geography from LGD API
+   ```
+
+2. **Ingest NDAP Demographics**:
+   ```bash
+   # Ingest National Data Analytics Platform statistics
+   python ingest_ndap_9307.py
+   ```
+
+3. **Master Setup**:
+   Refer to `./scripts/setup_data.sh` for an automated foundational sync.
 
 ## Usage
 This file is mounted to `/docker-entrypoint-initdb.d/init.sql` in the Postgres Docker container.
@@ -134,6 +156,7 @@ erDiagram
         string ngo_name
         string domain
         string sub_domain
+        jsonb tags
         string location_village
         string location_district
         string location_state
