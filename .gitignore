@@ -2,3 +2,9 @@ data/
 migrations/
 .env
 source_data_files/
+
+# Logs and temporary data
+logs/
+.logs
+*.log
+checkpoint.json

@@ -475,41 +475,124 @@ CREATE TABLE IF NOT EXISTS village_amenities_raw (
 -- 3. APPLICATION DOMAIN & PROPOSALS
 -- ==========================================
 
+-- Thematic Domains (Primary & Secondary NGO Domains)
+CREATE TABLE IF NOT EXISTS thematic_domains (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Organizations (NGOs)
 CREATE TABLE IF NOT EXISTS organizations (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    domain VARCHAR(100), -- Primary domain like 'Education', 'Water', etc.
+    name VARCHAR(500) NOT NULL,
+    url VARCHAR(500),
+    email VARCHAR(150),
+    phone VARCHAR(20),
+    poc_name VARCHAR(100),
+    address VARCHAR(500),
+    state VARCHAR(100),
+    district VARCHAR(100),
+    city VARCHAR(100),
+    pincode VARCHAR(20),
+    ngo_darpan_id VARCHAR(100) UNIQUE,
+    pan_number VARCHAR(20),
+    status VARCHAR(50) DEFAULT 'PENDING', -- PENDING, ACTIVE, SUSPENDED
+    active BOOLEAN DEFAULT FALSE,
+    max_proposals_per_month INTEGER DEFAULT 1000,
+    token_limit INTEGER DEFAULT 10000000,
+    spent_tokens INTEGER DEFAULT 0,
     logo_url TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255)
+);
+
+-- Junction table for Organization domains
+CREATE TABLE IF NOT EXISTS organization_domains (
+    organization_id INTEGER REFERENCES organizations(id),
+    domain_id INTEGER REFERENCES thematic_domains(id),
+    PRIMARY KEY (organization_id, domain_id)
 );
 
 -- Users
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    org_id INTEGER REFERENCES organizations(id),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    full_name VARCHAR(100),
+    userid VARCHAR(20) UNIQUE,
+    password VARCHAR(255), -- Aligned with models.py
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    email VARCHAR(150) NOT NULL,
+    phone VARCHAR(20),
     role VARCHAR(50) DEFAULT 'USER',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    is_org_admin BOOLEAN DEFAULT FALSE,
+    org_id INTEGER REFERENCES organizations(id),
+    active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255)
 );
+
+-- NGO Registration Workflow Tables
+CREATE TABLE IF NOT EXISTS ngo_onboarding_requests (
+    id SERIAL PRIMARY KEY,
+    requested_by INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    ngo_name VARCHAR(500) NOT NULL,
+    ngo_darpan_id VARCHAR(100) NOT NULL,
+    pan_number VARCHAR(20),
+    email VARCHAR(150),
+    phone VARCHAR(20) NOT NULL,
+    poc_name VARCHAR(100) NOT NULL,
+    address VARCHAR(500),
+    state VARCHAR(100),
+    district VARCHAR(100),
+    city VARCHAR(100),
+    pincode VARCHAR(20),
+    domain_ids INTEGER[],
+    status VARCHAR(50) DEFAULT 'PENDING',
+    requested_at TIMESTAMP DEFAULT NOW(),
+    reviewed_at TIMESTAMP,
+    reviewed_by VARCHAR(255),
+    rejection_reason TEXT,
+    created_org_id INTEGER REFERENCES organizations(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ngo_onboarding_status ON ngo_onboarding_requests(status);
+CREATE INDEX IF NOT EXISTS idx_ngo_onboarding_requested_by ON ngo_onboarding_requests(requested_by);
+
+CREATE TABLE IF NOT EXISTS ngo_join_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    org_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    status VARCHAR(50) DEFAULT 'PENDING',
+    requested_at TIMESTAMP DEFAULT NOW(),
+    reviewed_at TIMESTAMP,
+    reviewed_by VARCHAR(255),
+    rejection_reason TEXT,
+    UNIQUE(user_id, org_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ngo_join_user ON ngo_join_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_ngo_join_org ON ngo_join_requests(org_id);
+CREATE INDEX IF NOT EXISTS idx_ngo_join_status ON ngo_join_requests(status);
 
 -- Proposal Master (Consolidated Header)
 CREATE TABLE IF NOT EXISTS proposal_master (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
-    org_id INTEGER REFERENCES organizations(id),
-    title VARCHAR(255) NOT NULL,
-    summary TEXT,
-    total_budget DECIMAL(15, 2),
-    status VARCHAR(50) DEFAULT 'DRAFT', -- DRAFT, FINALIZED, ARCHIVED
-    granularity VARCHAR(50) DEFAULT 'VILLAGE', -- VILLAGE, CLUSTER, BLOCK, DISTRICT
-    target_beneficiaries VARCHAR(255),
-    tags JSONB DEFAULT '[]', -- Cross-domain relevance tags
-    full_content JSONB, -- Storage for all section data
+    proposal_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ngo_id INTEGER REFERENCES organizations(id) NOT NULL,
+    ngo_name VARCHAR(255) NOT NULL,
+    domain VARCHAR(50) NOT NULL,
+    sub_domain VARCHAR(100),
+    location_village VARCHAR(255),
+    location_district VARCHAR(255),
+    location_state VARCHAR(255),
+    location_lgd_code BIGINT,
+    title VARCHAR(500),
+    document_url TEXT,
+    status VARCHAR(50) DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255),
+    tags JSONB DEFAULT '[]'
 );
 
 -- Proposal Targets (Regional Coverage)
@@ -536,17 +619,196 @@ CREATE TABLE IF NOT EXISTS ai_response_metadata (
 );
 
 -- ==========================================
--- 4. SEED DATA & TRIGGERS
+-- 4. SCHOOLS UDISE DATA & ENRICHMENT
 -- ==========================================
 
+-- UDISE+ Comprehensive School Data
+CREATE TABLE IF NOT EXISTS schools_udise_data (
+    id SERIAL PRIMARY KEY,
+    udise_code VARCHAR(20) NOT NULL,
+    school_id INTEGER, -- UDISE internal school ID
+    year_id INTEGER NOT NULL, -- 11=2024-25, 12=2025-26
+    
+    -- Scraping Metadata
+    last_scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    scrape_status VARCHAR(20) DEFAULT 'success', -- success, failed, partial
+    retry_count INTEGER DEFAULT 0,
+    error_message TEXT,
+    
+    -- Store complete API responses as JSONB for flexibility
+    basic_info JSONB, -- /school/by-year
+    report_card JSONB, -- /school/report-card
+    facility_data JSONB, -- /school/facility
+    profile_data JSONB, -- /school/profile
+    enrollment_social JSONB, -- /getSocialData?flag=1 (caste)
+    enrollment_religion JSONB, -- /getSocialData?flag=2 (religion, BPL, CWSN)
+    enrollment_mainstreamed JSONB, -- /getSocialData?flag=3
+    enrollment_ews JSONB, -- /getSocialData?flag=4
+    enrollment_rte JSONB, -- /getSocialData?flag=5
+    
+    -- Extracted Summary Fields (for easy querying)
+    total_students INTEGER,
+    total_boys INTEGER,
+    total_girls INTEGER,
+    total_teachers INTEGER,
+    has_internet BOOLEAN,
+    has_library BOOLEAN,
+    has_playground BOOLEAN,
+    has_electricity BOOLEAN,
+    
+    UNIQUE(udise_code, year_id)
+);
+
+CREATE INDEX idx_schools_udise_udise_code ON schools_udise_data(udise_code);
+CREATE INDEX idx_schools_udise_year_id ON schools_udise_data(year_id);
+CREATE INDEX idx_schools_udise_scrape_status ON schools_udise_data(scrape_status);
+
+-- View: Student Population (Most Frequently Used)
+CREATE OR REPLACE VIEW school_student_population_view AS
+SELECT 
+    s.udise_code,
+    s.name AS school_name,
+    st.name AS state,
+    d.name AS district,
+    b.name AS block,
+    c.name AS cluster,
+    u.total_students,
+    u.total_boys,
+    u.total_girls,
+    (u.enrollment_social->>'students_sc')::INTEGER as students_sc,
+    (u.enrollment_social->>'students_st')::INTEGER as students_st,
+    (u.enrollment_social->>'students_obc')::INTEGER as students_obc,
+    (u.enrollment_religion->>'students_bpl')::INTEGER as students_bpl,
+    (u.enrollment_religion->>'students_cwsn')::INTEGER as students_cwsn,
+    u.year_id,
+    u.last_scraped_at
+FROM schools s
+LEFT JOIN clusters c ON s.cluster_id = c.id
+LEFT JOIN blocks b ON c.block_id = b.id
+LEFT JOIN districts d ON b.district_id = d.id
+LEFT JOIN states st ON d.state_id = st.id
+LEFT JOIN LATERAL (
+    SELECT * FROM schools_udise_data 
+    WHERE udise_code = s.udise_code 
+    ORDER BY year_id DESC 
+    LIMIT 1
+) u ON true;
+
+-- View: Infrastructure Details
+CREATE OR REPLACE VIEW school_infra_view AS
+SELECT 
+    s.udise_code,
+    s.name AS school_name,
+    st.name AS state,
+    d.name AS district,
+    (u.facility_data->>'clsrmsInst')::INTEGER as total_classrooms,
+    (u.facility_data->>'clsrmsGd')::INTEGER as classrooms_good,
+    (u.facility_data->>'clsrmsMaj')::INTEGER as classrooms_major_repair,
+    u.has_library,
+    u.has_playground,
+    u.has_electricity,
+    (u.facility_data->>'toiletbFun')::INTEGER as toilets_boys_functional,
+    (u.facility_data->>'toiletgFun')::INTEGER as toilets_girls_functional,
+    (u.facility_data->>'drinkWaterYn')::INTEGER as has_drinking_water
+FROM schools s
+LEFT JOIN clusters c ON s.cluster_id = c.id
+LEFT JOIN blocks b ON c.block_id = b.id
+LEFT JOIN districts d ON b.district_id = d.id
+LEFT JOIN states st ON d.state_id = st.id
+LEFT JOIN LATERAL (
+    SELECT * FROM schools_udise_data 
+    WHERE udise_code = s.udise_code 
+    ORDER BY year_id DESC 
+    LIMIT 1
+) u ON true;
+
+-- View: Digital Facilities
+CREATE OR REPLACE VIEW school_digital_facilities_view AS
+SELECT 
+    s.udise_code,
+    s.name AS school_name,
+    st.name AS state,
+    d.name AS district,
+    u.has_internet,
+    (u.facility_data->>'laptopTot')::INTEGER as laptops_total,
+    (u.facility_data->>'tabletsTot')::INTEGER as tablets_total,
+    (u.facility_data->>'projectorTot')::INTEGER as projectors_total,
+    (u.facility_data->>'printerTot')::INTEGER as printers_total,
+    (u.facility_data->>'ictLabYn')::INTEGER as has_ict_lab
+FROM schools s
+LEFT JOIN clusters c ON s.cluster_id = c.id
+LEFT JOIN blocks b ON c.block_id = b.id
+LEFT JOIN districts d ON b.district_id = d.id
+LEFT JOIN states st ON d.state_id = st.id
+LEFT JOIN LATERAL (
+    SELECT * FROM schools_udise_data 
+    WHERE udise_code = s.udise_code 
+    ORDER BY year_id DESC 
+    LIMIT 1
+) u ON true;
+
+-- View: Teacher Information
+CREATE OR REPLACE VIEW school_teacher_view AS
+SELECT 
+    s.udise_code,
+    s.name AS school_name,
+    st.name AS state,
+    d.name AS district,
+    u.total_teachers,
+    (u.report_card->>'totMale')::INTEGER as teachers_male,
+    (u.report_card->>'totFemale')::INTEGER as teachers_female,
+    (u.report_card->>'tchReg')::INTEGER as teachers_regular,
+    (u.report_card->>'totTchPgraduateAbove')::INTEGER as teachers_postgraduate
+FROM schools s
+LEFT JOIN clusters c ON s.cluster_id = c.id
+LEFT JOIN blocks b ON c.block_id = b.id
+LEFT JOIN districts d ON b.district_id = d.id
+LEFT JOIN states st ON d.state_id = st.id
+LEFT JOIN LATERAL (
+    SELECT * FROM schools_udise_data 
+    WHERE udise_code = s.udise_code 
+    ORDER BY year_id DESC 
+    LIMIT 1
+) u ON true;
+
+-- ==========================================
+-- 5. SEED DATA & TRIGGERS
+-- ==========================================
+
+-- Initial Thematic Domains
+INSERT INTO thematic_domains (name, description) VALUES
+    ('WASH / JJM', 'Water, Sanitation and Hygiene / Jal Jeevan Mission'),
+    ('Education', 'Primary and Secondary Education, Literacy'),
+    ('Healthcare', 'Public Health, Maternal Care, Nutrition'),
+    ('Livelihoods', 'Skill Development, Agriculture, SHGs'),
+    ('Environment', 'Conservation, Climate Action, Waste Management'),
+    ('Women Empowerment', 'Gender Equality, Financial Independence')
+ON CONFLICT (name) DO NOTHING;
+
 -- Default Organization
-INSERT INTO organizations (name, domain) 
-VALUES ('Tech4SocialGood', 'Technology & Innovation')
-ON CONFLICT DO NOTHING;
+INSERT INTO organizations (id, name, status, active) 
+VALUES (1, 'Tech4SocialGood', 'ACTIVE', TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- Test NGO for Proposal Generation (Matching ID 1 details for template fields)
+INSERT INTO organizations (
+    id, name, url, email, phone, poc_name, address, state, district, city, pincode, 
+    ngo_darpan_id, status, active
+) 
+VALUES (
+    2, 'Prakalpa Test NGO for Proposal Generation', 'https://www.prakalpasooujanya.g', 
+    'contact@prakalpasoujanya.org', '+91 9845024536', 'Vijay Paul', 'Indiranagar', 
+    'Karnataka', 'Bangalore Urban', 'Bangalore', '560038', 
+    'KA/2026/9999999', 'ACTIVE', TRUE
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Synchronize the serial sequence
+SELECT setval('organizations_id_seq', (SELECT MAX(id) FROM organizations));
 
 -- Default Admin User (Password: admin123 - for dev only)
-INSERT INTO users (org_id, email, password_hash, full_name, role)
-VALUES (1, 'admin@tech4socialgood.org', 'pbkdf2:sha256:600000$admin_hash_placeholder', 'Admin User', 'ADMIN')
+INSERT INTO users (org_id, email, password, first_name, last_name, role, active)
+VALUES (1, 'admin@tech4socialgood.org', 'pbkdf2:sha256:600000$admin_hash_placeholder', 'Admin', 'User', 'ADMIN', TRUE)
 ON CONFLICT DO NOTHING;
 
 -- Update Trigger for proposal_master

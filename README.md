@@ -23,6 +23,7 @@ The system follows a **Foundation Data** strategy, pre-populating geography and 
 
 **Domain Data Summary:**
 - `jjm_population_data` - Population data from Jal Jeevan Mission.
+- `schools_udise_data` - Detailed school infrastructure and enrollment metrics (In-Sync).
 
 
 ## 🚀 Data Foundation Setup
@@ -41,7 +42,13 @@ Before generating proposals, you must initialize the geographic and demographic 
    python ingest_ndap_9307.py
    ```
 
-3. **Master Setup**:
+3. **UDISE+ Infrastructure Sync**:
+   ```bash
+   cd scripts
+   python scrape_udise_data.py --state KARNATAKA  # Sync detailed school data
+   ```
+
+4. **Master Setup**:
    Refer to `./scripts/setup_data.sh` for an automated foundational sync.
 
 ## Usage
