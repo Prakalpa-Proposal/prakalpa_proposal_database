@@ -12,8 +12,9 @@ This repository contains the database initialization scripts for the Prakalpa Pr
 The system follows a **Foundation Data** strategy, pre-populating geography and social infrastructure intelligence:
 
 **Core Persistence:**
-- `proposal_master` - Session tracking with `org_id` ownership, `title` identity, and cross-domain `tags`.
-- `ai_response_metadata` - Versioned AI content with Responses API metadata.
+- `proposal_master` - Session tracking with `org_id` ownership, `title` identity, `blueprint_id` pinning, and cross-domain `tags`.
+- `proposal_blueprints` - Dynamic configuration storage for section dependencies, UI layout, and LLM parameters.
+- `ai_response_metadata` - Versioned AI content and Manual Drafts with `source` tracking (AI vs User).
 
 **Foundation Data:**
 - `states`, `districts`, `blocks`, `clusters` - Hierarchical geography.
@@ -155,10 +156,21 @@ erDiagram
         boolean active
     }
 
+    proposal_blueprints ||--o{ proposal_master : "governs"
+    proposal_blueprints {
+        uuid id PK
+        string version_label
+        jsonb sections_config
+        jsonb ui_config
+        boolean is_default
+        boolean is_published
+    }
+
     organizations ||--o{ proposal_master : "creates"
     proposal_master ||--o{ ai_response_metadata : "contains"
     proposal_master {
         uuid proposal_id PK
+        uuid blueprint_id FK
         int org_id FK
         string ngo_name
         string domain
@@ -193,5 +205,6 @@ erDiagram
         decimal top_p
         text reasoning_summary
         int generation_time_ms
+        string source
     }
 ```
