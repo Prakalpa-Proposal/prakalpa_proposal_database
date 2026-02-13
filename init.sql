@@ -609,12 +609,27 @@ CREATE TABLE IF NOT EXISTS proposal_targets (
 
 -- AI Response Metadata (For refining prompts)
 CREATE TABLE IF NOT EXISTS ai_response_metadata (
-    id SERIAL PRIMARY KEY,
-    proposal_id INTEGER REFERENCES proposal_master(id),
-    section_key VARCHAR(100),
-    prompt_version VARCHAR(50),
-    tokens_used INTEGER,
-    response_time_ms INTEGER,
+    id BIGSERIAL PRIMARY KEY,
+    proposal_id UUID REFERENCES proposal_master(proposal_id) NOT NULL,
+    section_code VARCHAR(100) NOT NULL,
+    version INTEGER DEFAULT 1,
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    openai_response_id VARCHAR(255),
+    openai_model VARCHAR(100),
+    created_at_openai BIGINT,
+    status VARCHAR(50),
+    completed_at_openai BIGINT,
+    error_message TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+    previous_response_id VARCHAR(255),
+    temperature NUMERIC(3, 2),
+    top_p NUMERIC(3, 2),
+    reasoning_summary TEXT,
+    source VARCHAR(50) DEFAULT 'AI_GENERATED',
+    generation_time_ms INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
