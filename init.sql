@@ -505,7 +505,8 @@ CREATE TABLE IF NOT EXISTS organizations (
     spent_tokens INTEGER DEFAULT 0,
     logo_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255)
+    created_by VARCHAR(255),
+    settings JSONB DEFAULT '{}'
 );
 
 -- Junction table for Organization domains
@@ -600,13 +601,17 @@ CREATE TABLE IF NOT EXISTS proposal_master (
     location_district VARCHAR(255),
     location_state VARCHAR(255),
     location_lgd_code BIGINT,
+    location_pincode VARCHAR(20),
     title VARCHAR(500),
     document_url TEXT,
     status VARCHAR(50) DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_by VARCHAR(255),
-    tags JSONB DEFAULT '[]'
+    tags JSONB DEFAULT '[]',
+    archived_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    archived_by VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT chk_proposal_status CHECK (status IN ('draft', 'in_progress', 'archived', 'completed'))
 );
 
 -- Proposal Targets (Regional Coverage)
@@ -624,7 +629,7 @@ CREATE TABLE IF NOT EXISTS proposal_targets (
 -- AI Response Metadata (For refining prompts)
 CREATE TABLE IF NOT EXISTS ai_response_metadata (
     id BIGSERIAL PRIMARY KEY,
-    proposal_id UUID REFERENCES proposal_master(proposal_id) NOT NULL,
+    proposal_id UUID REFERENCES proposal_master(proposal_id) ON DELETE CASCADE NOT NULL,
     section_code VARCHAR(100) NOT NULL,
     version INTEGER DEFAULT 1,
     content TEXT NOT NULL,
@@ -644,6 +649,7 @@ CREATE TABLE IF NOT EXISTS ai_response_metadata (
     reasoning_summary TEXT,
     source VARCHAR(50) DEFAULT 'AI_GENERATED',
     generation_time_ms INTEGER,
+    structured_data JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -800,6 +806,23 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) u ON true;
 
+-- View: Village Discovery (LGD Master + Demographics)
+-- Used by LGDDatabaseProvider for village search and lookup.
+-- Source of truth for geography is lgd_master (LGD CSV 9307).
+-- Population data is enriched from village_demographics (JJM scraper).
+CREATE OR REPLACE VIEW village_discovery_view AS
+SELECT DISTINCT ON (lm.village_code)
+    lm.village_code AS lgd_code,
+    lm.village_name AS village,
+    lm.subdistrict_name AS taluk,
+    lm.district_name AS district,
+    lm.state_name AS state,
+    vd.total_population AS population,
+    vd.households
+FROM lgd_master lm
+LEFT JOIN village_demographics vd ON lm.village_code = vd.lgd_code
+ORDER BY lm.village_code, vd.total_population DESC NULLS LAST;
+
 -- ==========================================
 -- 5. SEED DATA & TRIGGERS
 -- ==========================================
@@ -857,27 +880,27 @@ CREATE TRIGGER update_proposal_master_updated_at
 -- Seed V1.0 Blueprint (Mirror of refined config.py)
 INSERT INTO proposal_blueprints (version_label, is_default, is_published, sections_config, ui_config)
 VALUES ('V1.0', TRUE, TRUE, '{
-  "RAW_DATA_SKELETON": {"model": "gpt-3.5-turbo", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt"},
-  "COMMUNITY_PROFILE": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.3, "dependencies": ["RAW_DATA_SKELETON"], "prompt_method": "build_community_profile_prompt", "requires_raw_data": true},
-  "NEEDS_ASSESSMENT": {"model": "gpt-3.5-turbo", "min_words": 300, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_needs_prompt"},
-  "BENEFITS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.7, "dependencies": ["NEEDS_ASSESSMENT", "SOLUTION_DESIGN"], "prompt_method": "build_benefits_prompt"},
-  "BENEFICIARIES": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_beneficiaries_prompt", "requires_raw_data": true},
-  "ENVIRONMENTAL_FACTORS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_environmental_factors_prompt"},
-  "NGO_CREDENTIALS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.4, "dependencies": [], "prompt_method": "build_ngo_credentials_prompt"},
-  "COMMITMENT_ASSURANCE": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.5, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_commitment_assurance_prompt"},
-  "CAPABILITY_SKILLS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.6, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_capability_skills_prompt"},
-  "COMMUNITY_ID_FOCUS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_id_focus_prompt"},
-  "COSTS_BUDGETS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.3, "dependencies": ["SOLUTION_DESIGN", "BENEFICIARIES"], "prompt_method": "build_costs_budgets_prompt", "requires_raw_data": true},
-  "COMMERCIAL_TCS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.4, "dependencies": ["COSTS_BUDGETS"], "prompt_method": "build_commercial_terms_prompt"},
-  "RELATIONSHIP_MANAGEMENT": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.6, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_relationship_management_prompt"},
-  "RISKS": {"model": "gpt-3.5-turbo", "min_words": 400, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_risks_mitigation_prompt"},
-  "IMPACT_ASSESSMENT": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.6, "dependencies": ["BENEFITS", "BENEFICIARIES", "SOLUTION_DESIGN"], "prompt_method": "build_impact_creation_prompt", "requires_raw_data": true},
-  "SOLUTION_DESIGN": {"model": "gpt-3.5-turbo", "min_words": 1000, "temperature": 0.6, "dependencies": ["NEEDS_ASSESSMENT", "COMMUNITY_PROFILE"], "prompt_method": "build_solution_design_prompt", "requires_raw_data": true},
-  "SHARED_RESPONSIBILITY": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.5, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_shared_responsibility_prompt"},
-  "STAKEHOLDERS_MANAGEMENT": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "BENEFICIARIES"], "prompt_method": "build_stakeholders_management_prompt"},
-  "SUSTAINABILITY": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.6, "dependencies": ["SOLUTION_DESIGN", "IMPACT_ASSESSMENT", "COSTS_BUDGETS"], "prompt_method": "build_sustainability_prompt"},
-  "PROJECT_OPERATIONS": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_project_operations_prompt"},
-  "PARTNERS_SMES": {"model": "gpt-3.5-turbo", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_partners_smes_prompt"}
+  "RAW_DATA_SKELETON": {"model": "gpt-4o-mini", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt"},
+  "COMMUNITY_PROFILE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["RAW_DATA_SKELETON"], "prompt_method": "build_community_profile_prompt", "requires_raw_data": true},
+  "NEEDS_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 300, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_needs_prompt"},
+  "BENEFITS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.7, "dependencies": ["NEEDS_ASSESSMENT", "SOLUTION_DESIGN"], "prompt_method": "build_benefits_prompt"},
+  "BENEFICIARIES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_beneficiaries_prompt", "requires_raw_data": true},
+  "ENVIRONMENTAL_FACTORS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_environmental_factors_prompt"},
+  "NGO_CREDENTIALS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": [], "prompt_method": "build_ngo_credentials_prompt"},
+  "COMMITMENT_ASSURANCE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_commitment_assurance_prompt"},
+  "CAPABILITY_SKILLS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_capability_skills_prompt"},
+  "COMMUNITY_ID_FOCUS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_id_focus_prompt"},
+  "COSTS_BUDGETS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["SOLUTION_DESIGN", "BENEFICIARIES"], "prompt_method": "build_costs_budgets_prompt", "requires_raw_data": true},
+  "COMMERCIAL_TCS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": ["COSTS_BUDGETS"], "prompt_method": "build_commercial_terms_prompt"},
+  "RELATIONSHIP_MANAGEMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_relationship_management_prompt"},
+  "RISKS": {"model": "gpt-4o-mini", "min_words": 400, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_risks_mitigation_prompt"},
+  "IMPACT_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["BENEFITS", "BENEFICIARIES", "SOLUTION_DESIGN"], "prompt_method": "build_impact_creation_prompt", "requires_raw_data": true},
+  "SOLUTION_DESIGN": {"model": "gpt-4o-mini", "min_words": 1000, "temperature": 0.6, "dependencies": ["NEEDS_ASSESSMENT", "COMMUNITY_PROFILE"], "prompt_method": "build_solution_design_prompt", "requires_raw_data": true},
+  "SHARED_RESPONSIBILITY": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_shared_responsibility_prompt"},
+  "STAKEHOLDERS_MANAGEMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "BENEFICIARIES"], "prompt_method": "build_stakeholders_management_prompt"},
+  "SUSTAINABILITY": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["SOLUTION_DESIGN", "IMPACT_ASSESSMENT", "COSTS_BUDGETS"], "prompt_method": "build_sustainability_prompt"},
+  "PROJECT_OPERATIONS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_project_operations_prompt"},
+  "PARTNERS_SMES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_partners_smes_prompt"}
 }', 
 '[
   {"label": "B - Benefits", "code": "B", "fields": ["Benefits / Goals / Value Creation", "Beneficiaries"]},
