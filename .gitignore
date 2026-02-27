@@ -1,10 +1,20 @@
-data/
-migrations/
+# Environment
 .env
+
+# Data & Storage
+data/
+logs/
 source_data_files/
 
-# Logs and temporary data
-logs/
-.logs
-*.log
-checkpoint.json
+# Temporary Scraper & Audit Artifacts (DO NOT DELETE FROM DISK)
+scripts/*.pid
+scripts/*.json
+scripts/count_*.py
+scripts/logs/
+
+# Legacy Codebase
+scripts/legacy_v11/
+
+# OS/IDEs
+.DS_Store
+.vscode/

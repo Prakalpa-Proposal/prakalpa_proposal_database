@@ -657,6 +657,63 @@ CREATE TABLE IF NOT EXISTS ai_response_metadata (
 -- 4. SCHOOLS UDISE DATA & ENRICHMENT
 -- ==========================================
 
+-- Regional Hierarchy for Education
+CREATE TABLE IF NOT EXISTS states (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    url_slug VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS districts (
+    id SERIAL PRIMARY KEY,
+    state_id INTEGER REFERENCES states(id),
+    name VARCHAR(255) NOT NULL,
+    url_slug VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(state_id, url_slug)
+);
+
+CREATE TABLE IF NOT EXISTS blocks (
+    id SERIAL PRIMARY KEY,
+    district_id INTEGER REFERENCES districts(id),
+    name VARCHAR(255) NOT NULL,
+    url_slug VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(district_id, url_slug)
+);
+
+CREATE TABLE IF NOT EXISTS clusters (
+    id SERIAL PRIMARY KEY,
+    block_id INTEGER REFERENCES blocks(id),
+    name VARCHAR(255) NOT NULL,
+    url_slug VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(block_id, url_slug)
+);
+
+CREATE TABLE IF NOT EXISTS schools (
+    id SERIAL PRIMARY KEY,
+    udise_code VARCHAR(20) UNIQUE NOT NULL,
+    cluster_id INTEGER REFERENCES clusters(id),
+    name VARCHAR(255) NOT NULL,
+    address TEXT,
+    pincode VARCHAR(20),
+    rating VARCHAR(50),
+    infrastructure JSONB DEFAULT '{}'::jsonb,
+    url_slug VARCHAR(255),
+    active BOOLEAN DEFAULT TRUE,
+    about TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_districts_state ON districts(state_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_district ON blocks(district_id);
+CREATE INDEX IF NOT EXISTS idx_clusters_block ON clusters(block_id);
+CREATE INDEX IF NOT EXISTS idx_schools_cluster ON schools(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_schools_udise ON schools(udise_code);
+
 -- UDISE+ Comprehensive School Data
 CREATE TABLE IF NOT EXISTS schools_udise_data (
     id SERIAL PRIMARY KEY,
@@ -698,113 +755,64 @@ CREATE INDEX idx_schools_udise_udise_code ON schools_udise_data(udise_code);
 CREATE INDEX idx_schools_udise_year_id ON schools_udise_data(year_id);
 CREATE INDEX idx_schools_udise_scrape_status ON schools_udise_data(scrape_status);
 
--- View: Student Population (Most Frequently Used)
+-- View: Student Population (Thin/Basic Overview)
 CREATE OR REPLACE VIEW school_student_population_view AS
-SELECT 
-    s.udise_code,
-    s.name AS school_name,
-    st.name AS state,
-    d.name AS district,
-    b.name AS block,
-    c.name AS cluster,
-    u.total_students,
-    u.total_boys,
-    u.total_girls,
-    (u.enrollment_social->>'students_sc')::INTEGER as students_sc,
-    (u.enrollment_social->>'students_st')::INTEGER as students_st,
-    (u.enrollment_social->>'students_obc')::INTEGER as students_obc,
-    (u.enrollment_religion->>'students_bpl')::INTEGER as students_bpl,
-    (u.enrollment_religion->>'students_cwsn')::INTEGER as students_cwsn,
-    u.year_id,
-    u.last_scraped_at
-FROM schools s
-LEFT JOIN clusters c ON s.cluster_id = c.id
-LEFT JOIN blocks b ON c.block_id = b.id
-LEFT JOIN districts d ON b.district_id = d.id
-LEFT JOIN states st ON d.state_id = st.id
-LEFT JOIN LATERAL (
-    SELECT * FROM schools_udise_data 
-    WHERE udise_code = s.udise_code 
-    ORDER BY year_id DESC 
-    LIMIT 1
-) u ON true;
+SELECT udise_code, school_name, state_name AS state, district_name AS district, 
+       block_name AS block, cluster_name AS cluster, 
+       total_students, total_boys, total_girls, year_id
+FROM schools_udise_data
+WHERE state_name IS NOT NULL;
 
--- View: Infrastructure Details
-CREATE OR REPLACE VIEW school_infra_view AS
-SELECT 
-    s.udise_code,
-    s.name AS school_name,
-    st.name AS state,
-    d.name AS district,
-    (u.facility_data->>'clsrmsInst')::INTEGER as total_classrooms,
-    (u.facility_data->>'clsrmsGd')::INTEGER as classrooms_good,
-    (u.facility_data->>'clsrmsMaj')::INTEGER as classrooms_major_repair,
-    u.has_library,
-    u.has_playground,
-    u.has_electricity,
-    (u.facility_data->>'toiletbFun')::INTEGER as toilets_boys_functional,
-    (u.facility_data->>'toiletgFun')::INTEGER as toilets_girls_functional,
-    (u.facility_data->>'drinkWaterYn')::INTEGER as has_drinking_water
-FROM schools s
-LEFT JOIN clusters c ON s.cluster_id = c.id
-LEFT JOIN blocks b ON c.block_id = b.id
-LEFT JOIN districts d ON b.district_id = d.id
-LEFT JOIN states st ON d.state_id = st.id
-LEFT JOIN LATERAL (
-    SELECT * FROM schools_udise_data 
-    WHERE udise_code = s.udise_code 
-    ORDER BY year_id DESC 
-    LIMIT 1
-) u ON true;
+-- View: Campus Assets & Security (Security & Physical Compound)
+CREATE OR REPLACE VIEW school_campus_assets_view AS
+SELECT udise_code, school_name, state_name,
+       facility_data->'data'->>'bldStatus' as building_status,
+       (facility_data->'data'->>'bldBlkTot')::INTEGER as building_blocks,
+       facility_data->'data'->>'bndrywallType' as boundary_wall_type,
+       (facility_data->'data'->>'playgroundYn')::INTEGER = 1 as has_playground,
+       (facility_data->'data'->>'rampsYn')::INTEGER = 1 as has_ramps,
+       (facility_data->'data'->>'handrailsYn')::INTEGER = 1 as has_handrails,
+       (facility_data->'data'->>'solarpanelYn')::INTEGER = 1 as has_solar_power,
+       (facility_data->'data'->>'rainHarvestYn')::INTEGER = 1 as has_rain_harvesting
+FROM schools_udise_data WHERE state_name IS NOT NULL;
 
--- View: Digital Facilities
-CREATE OR REPLACE VIEW school_digital_facilities_view AS
-SELECT 
-    s.udise_code,
-    s.name AS school_name,
-    st.name AS state,
-    d.name AS district,
-    u.has_internet,
-    (u.facility_data->>'laptopTot')::INTEGER as laptops_total,
-    (u.facility_data->>'tabletsTot')::INTEGER as tablets_total,
-    (u.facility_data->>'projectorTot')::INTEGER as projectors_total,
-    (u.facility_data->>'printerTot')::INTEGER as printers_total,
-    (u.facility_data->>'ictLabYn')::INTEGER as has_ict_lab
-FROM schools s
-LEFT JOIN clusters c ON s.cluster_id = c.id
-LEFT JOIN blocks b ON c.block_id = b.id
-LEFT JOIN districts d ON b.district_id = d.id
-LEFT JOIN states st ON d.state_id = st.id
-LEFT JOIN LATERAL (
-    SELECT * FROM schools_udise_data 
-    WHERE udise_code = s.udise_code 
-    ORDER BY year_id DESC 
-    LIMIT 1
-) u ON true;
+-- View: Classroom Quality (Granular condition mapping)
+CREATE OR REPLACE VIEW school_classroom_condition_view AS
+SELECT udise_code, school_name,
+       (facility_data->'data'->>'clsrmsInst')::INTEGER as total_classrooms,
+       (facility_data->'data'->>'clsrmsGd')::INTEGER as rooms_good,
+       (facility_data->'data'->>'clsrmsMin')::INTEGER as rooms_minor_repair,
+       (facility_data->'data'->>'clsrmsMaj')::INTEGER as rooms_major_repair,
+       (facility_data->'data'->>'clsrmsGdPpu')::INTEGER as rooms_pucca_good,
+       (facility_data->'data'->>'stusHvFurnt')::INTEGER = 1 as has_furniture
+FROM schools_udise_data WHERE state_name IS NOT NULL;
 
--- View: Teacher Information
-CREATE OR REPLACE VIEW school_teacher_view AS
-SELECT 
-    s.udise_code,
-    s.name AS school_name,
-    st.name AS state,
-    d.name AS district,
-    u.total_teachers,
-    (u.report_card->>'totMale')::INTEGER as teachers_male,
-    (u.report_card->>'totFemale')::INTEGER as teachers_female,
-    (u.report_card->>'tchReg')::INTEGER as teachers_regular,
-    (u.report_card->>'totTchPgraduateAbove')::INTEGER as teachers_postgraduate
-FROM schools s
-LEFT JOIN clusters c ON s.cluster_id = c.id
-LEFT JOIN blocks b ON c.block_id = b.id
-LEFT JOIN districts d ON b.district_id = d.id
-LEFT JOIN states st ON d.state_id = st.id
-LEFT JOIN LATERAL (
-    SELECT * FROM schools_udise_data 
-    WHERE udise_code = s.udise_code 
-    ORDER BY year_id DESC 
-    LIMIT 1
-) u ON true;
+-- View: Digital Infrastructure (The Tech Stack)
+CREATE OR REPLACE VIEW school_digital_infrastructure_view AS
+SELECT udise_code, school_name,
+       (facility_data->'data'->>'internetYn')::INTEGER = 1 as has_internet,
+       (facility_data->'data'->>'ictLabYn')::INTEGER = 1 as has_ict_lab,
+       (facility_data->'data'->>'laptopTot')::INTEGER as laptop_count,
+       (facility_data->'data'->>'desktopFun')::INTEGER as desktop_count,
+       (facility_data->'data'->>'projectorTot')::INTEGER as projector_count,
+       (facility_data->'data'->>'printerTot')::INTEGER as printer_count
+FROM schools_udise_data WHERE state_name IS NOT NULL;
+
+-- View: Specialized Support Spaces (Staff & Resource rooms)
+CREATE OR REPLACE VIEW school_specialized_spaces_view AS
+SELECT udise_code, school_name,
+       (facility_data->'data'->>'hmRoomYn')::INTEGER = 1 as has_principal_room,
+       (facility_data->'data'->>'libraryYn')::INTEGER = 1 as has_library,
+       (facility_data->'data'->>'tinkeringLabYn')::INTEGER = 1 as has_atal_tinkering_lab,
+       (facility_data->'data'->>'othrooms')::INTEGER as staff_and_store_rooms_count
+FROM schools_udise_data WHERE state_name IS NOT NULL;
+
+-- Mark Legacy Tables
+COMMENT ON TABLE schools IS 'DEPRECATED: SSOT IS schools_udise_data. DO NOT JOIN.';
+COMMENT ON TABLE clusters IS 'DEPRECATED: SSOT IS schools_udise_data. DO NOT JOIN.';
+COMMENT ON TABLE blocks IS 'DEPRECATED: SSOT IS schools_udise_data. DO NOT JOIN.';
+COMMENT ON TABLE districts IS 'DEPRECATED: SSOT IS schools_udise_data. DO NOT JOIN.';
+COMMENT ON TABLE states IS 'DEPRECATED: SSOT IS schools_udise_data. DO NOT JOIN.';
 
 -- View: Village Discovery (LGD Master + Demographics)
 -- Used by LGDDatabaseProvider for village search and lookup.
