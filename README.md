@@ -17,10 +17,10 @@ The system follows a **Foundation Data** strategy, pre-populating geography and 
 - `ai_response_metadata` - Versioned AI content and Manual Drafts with `source` tracking (AI vs User).
 
 **Foundation Data:**
-- `states`, `districts`, `blocks`, `clusters` - Hierarchical geography.
-- `villages` - Master record for habitations with unique LGD codes.
-- `village_demographics` - SC/ST population, household stats, and growth trends from NDAP.
-- `schools` - Granular infrastructure and enrollment data.
+- `lgd_master` - Authoritative geography master (Village to State) from data.gov.in.
+- `village_demographics` - SC/ST population and household stats from NDAP/JJM.
+- `schools_udise_data` - **Authoritative Sync**: Flattened UDISE+ school index with enrollment and infrastructure (Integrated Year 12).
+- `village_amenities_raw` - Massive dataset (150+ columns) for village-level infrastructure gaps (NDAP 7121).
 
 **Domain Data Summary:**
 - `jjm_population_data` - Population data from Jal Jeevan Mission.
@@ -43,14 +43,18 @@ Before generating proposals, you must initialize the geographic and demographic 
    python ingest_ndap_9307.py
    ```
 
-3. **UDISE+ Infrastructure Sync**:
+3. **UDISE+ Multi-State Sync (Two-Pass Registry)**:
    ```bash
    cd scripts
-   python scrape_udise_data.py --state KARNATAKA  # Sync detailed school data
+   # Pass 1: Discovery (List all schools)
+   python discover_registry.py --state KARNATAKA
+   
+   # Pass 2: Deep Mining (Enrich infrastructure & student logs)
+   python enrich_registry.py --state KARNATAKA
    ```
 
 4. **Master Setup**:
-   Refer to `./scripts/setup_data.sh` for an automated foundational sync.
+   Refer to `./scripts/setup_data.sh` or `./scripts/sequence_orchestrator.sh` for automated multi-state mining.
 
 ## Usage
 This file is mounted to `/docker-entrypoint-initdb.d/init.sql` in the Postgres Docker container.
@@ -58,73 +62,35 @@ This file is mounted to `/docker-entrypoint-initdb.d/init.sql` in the Postgres D
 ## Schema Diagram
 ```mermaid
 erDiagram
-    states ||--o{ districts : "has"
-    states {
-        int id PK
-        string name
-        string url_slug
-        timestamp created_at
-    }
-
-    districts ||--o{ blocks : "has"
-    districts {
-        int id PK
-        int state_id FK
-        string name
-        string url_slug
-    }
-
-    blocks ||--o{ clusters : "has"
-    blocks {
-        int id PK
-        int district_id FK
-        string name
-        string url_slug
-    }
-
-    clusters ||--o{ schools : "has"
-    clusters {
-        int id PK
-        int block_id FK
-        string name
-        string url_slug
-    }
-
-    schools {
-        int id PK
-        string udise_code UK
-        string name
-        int cluster_id FK
-        string category
-        string management
-        string medium_of_instruction
-        text address
-        string pincode
-        string rating
-        jsonb infrastructure
-    }
-
-    villages ||--o{ village_demographics : "has"
-    villages {
-        int id PK
-        string lgd_code UK
-        string name
+    lgd_master ||--o{ village_demographics : "identifies"
+    lgd_master {
+        string village_code PK
+        string village_name
         string district_name
         string state_name
-        boolean active
+        string pincode
+    }
+
+    lgd_master ||--o{ schools_udise_data : "locates"
+    schools_udise_data {
+        int school_id PK
+        int year_id PK
+        string udise_code
+        string school_name
+        int total_students
+        jsonb basic_info
+        jsonb facility_data
+        string scrape_status
     }
 
     village_demographics {
         int id PK
-        int village_id FK
-        string lgd_code
+        string lgd_code FK
         int total_population
         int households
         int sc_population
         int st_population
-        int general_population
         string source
-        timestamp fetched_at
     }
 
     organizations ||--o{ users : "has"
