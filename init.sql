@@ -885,9 +885,9 @@ CREATE TRIGGER update_proposal_master_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Seed V1.0.1 Blueprint (Enriched BE CRISP Model)
+-- Seed V1.0 Blueprint (Enriched BE CRISP Model)
 INSERT INTO proposal_blueprints (version_label, is_default, is_published, sections_config, ui_config)
-VALUES ('V1.0.1', TRUE, TRUE, '{
+VALUES ('V1.0', TRUE, TRUE, '{
   "RAW_DATA_SKELETON": {"model": "gpt-4o-mini", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt", "description": "Foundational data verification layer. Establishes LGD codes, demographics, and site-specific facts."},
   "COMMUNITY_PROFILE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["RAW_DATA_SKELETON"], "prompt_method": "build_community_profile_prompt", "requires_raw_data": true, "description": "A demographic snapshot of the target area, culture, and socioeconomic status."},
   "NEEDS_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 300, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_needs_prompt", "description": "Identifies and validates the specific issues and challenges within the community that the project aims to address."},
