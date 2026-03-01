@@ -885,37 +885,62 @@ CREATE TRIGGER update_proposal_master_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Seed V1.0 Blueprint (Mirror of refined config.py)
+-- Seed V1.0.1 Blueprint (Enriched BE CRISP Model)
 INSERT INTO proposal_blueprints (version_label, is_default, is_published, sections_config, ui_config)
-VALUES ('V1.0', TRUE, TRUE, '{
-  "RAW_DATA_SKELETON": {"model": "gpt-4o-mini", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt"},
-  "COMMUNITY_PROFILE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["RAW_DATA_SKELETON"], "prompt_method": "build_community_profile_prompt", "requires_raw_data": true},
-  "NEEDS_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 300, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_needs_prompt"},
-  "BENEFITS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.7, "dependencies": ["NEEDS_ASSESSMENT", "SOLUTION_DESIGN"], "prompt_method": "build_benefits_prompt"},
-  "BENEFICIARIES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_beneficiaries_prompt", "requires_raw_data": true},
-  "ENVIRONMENTAL_FACTORS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_environmental_factors_prompt"},
-  "NGO_CREDENTIALS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": [], "prompt_method": "build_ngo_credentials_prompt"},
-  "COMMITMENT_ASSURANCE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_commitment_assurance_prompt"},
-  "CAPABILITY_SKILLS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_capability_skills_prompt"},
-  "COMMUNITY_ID_FOCUS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_id_focus_prompt"},
-  "COSTS_BUDGETS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["SOLUTION_DESIGN", "BENEFICIARIES"], "prompt_method": "build_costs_budgets_prompt", "requires_raw_data": true},
-  "COMMERCIAL_TCS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": ["COSTS_BUDGETS"], "prompt_method": "build_commercial_terms_prompt"},
-  "RELATIONSHIP_MANAGEMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_relationship_management_prompt"},
-  "RISKS": {"model": "gpt-4o-mini", "min_words": 400, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_risks_mitigation_prompt"},
-  "IMPACT_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["BENEFITS", "BENEFICIARIES", "SOLUTION_DESIGN"], "prompt_method": "build_impact_creation_prompt", "requires_raw_data": true},
-  "SOLUTION_DESIGN": {"model": "gpt-4o-mini", "min_words": 1000, "temperature": 0.6, "dependencies": ["NEEDS_ASSESSMENT", "COMMUNITY_PROFILE"], "prompt_method": "build_solution_design_prompt", "requires_raw_data": true},
-  "SHARED_RESPONSIBILITY": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_shared_responsibility_prompt"},
-  "STAKEHOLDERS_MANAGEMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "BENEFICIARIES"], "prompt_method": "build_stakeholders_management_prompt"},
-  "SUSTAINABILITY": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["SOLUTION_DESIGN", "IMPACT_ASSESSMENT", "COSTS_BUDGETS"], "prompt_method": "build_sustainability_prompt"},
-  "PROJECT_OPERATIONS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_project_operations_prompt"},
-  "PARTNERS_SMES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_partners_smes_prompt"}
+VALUES ('V1.0.1', TRUE, TRUE, '{
+  "RAW_DATA_SKELETON": {"model": "gpt-4o-mini", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt", "description": "Foundational data verification layer. Establishes LGD codes, demographics, and site-specific facts."},
+  "COMMUNITY_PROFILE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["RAW_DATA_SKELETON"], "prompt_method": "build_community_profile_prompt", "requires_raw_data": true, "description": "A demographic snapshot of the target area, culture, and socioeconomic status."},
+  "NEEDS_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 300, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_needs_prompt", "description": "Identifies and validates the specific issues and challenges within the community that the project aims to address."},
+  "BENEFITS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.7, "dependencies": ["NEEDS_ASSESSMENT", "SOLUTION_DESIGN"], "prompt_method": "build_benefits_prompt", "description": "Defines the specific, positive outcomes the project intends to achieve to solve a problem."},
+  "BENEFICIARIES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_beneficiaries_prompt", "requires_raw_data": true, "description": "Identifies the specific individuals or groups who will directly receive help or support from the project''s activities and outcomes."},
+  "ENVIRONMENTAL_FACTORS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_environmental_factors_prompt", "description": "Analyzes the external conditions, such as ecological, social, or legal aspects, that could affect the project''s success or impact."},
+  "NGO_CREDENTIALS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": [], "prompt_method": "build_ngo_credentials_prompt", "description": "Details the NGO''s track record, internal management structures, ethical standards, and measures taken to ensure transparency and accountability."},
+  "COMMITMENT_ASSURANCE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_commitment_assurance_prompt", "description": "Demonstrates the organization''s dedication and provides evidence-based confidence that the project''s goals will be met reliably."},
+  "CAPABILITY_SKILLS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_capability_skills_prompt", "description": "Showcases the specific expertise, technical skills, and past achievements of the organization and team members relevant to the project."},
+  "COMMUNITY_ID_FOCUS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_id_focus_prompt", "description": "Explains how the target community was selected and ensures the project remains centered on their most pressing needs throughout its lifecycle."},
+  "COSTS_BUDGETS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["SOLUTION_DESIGN", "BENEFICIARIES"], "prompt_method": "build_costs_budgets_prompt", "requires_raw_data": true, "description": "Provides a detailed breakdown of all financial requirements and explains how funds will be allocated and managed to ensure cost-effectiveness."},
+  "COMMERCIAL_TCS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": ["COSTS_BUDGETS"], "prompt_method": "build_commercial_terms_prompt", "description": "Outlines the formal terms, conditions, and legal agreements governing the implementation and financial aspects of the project."},
+  "RELATIONSHIP_MANAGEMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_relationship_management_prompt", "description": "Describes the strategies for building and maintaining positive, collaborative relationships with all project partners and participants."},
+  "RISKS": {"model": "gpt-4o-mini", "min_words": 400, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_risks_mitigation_prompt", "description": "Identifies potential obstacles to project success and provides proactive plans to minimize or overcome their impact."},
+  "IMPACT_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["BENEFITS", "BENEFICIARIES", "SOLUTION_DESIGN"], "prompt_method": "build_impact_creation_prompt", "requires_raw_data": true, "description": "Defines the intended long-term changes and explains the methods that will be used to measure and verify these outcomes."},
+  "SOLUTION_DESIGN": {"model": "gpt-4o-mini", "min_words": 1000, "temperature": 0.6, "dependencies": ["NEEDS_ASSESSMENT", "COMMUNITY_PROFILE"], "prompt_method": "build_solution_design_prompt", "requires_raw_data": true, "description": "Outlines the technical approach, activities, and logic that will be used to transform resources into the intended project benefits."},
+  "SHARED_RESPONSIBILITY": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["STAKEHOLDERS_MANAGEMENT"], "prompt_method": "build_shared_responsibility_prompt", "description": "Details how different stakeholders, including the community, will contribute to and take ownership of the project''s activities and outcomes."},
+  "STAKEHOLDERS_MANAGEMENT": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "BENEFICIARIES"], "prompt_method": "build_stakeholders_management_prompt", "description": "Identifies all individuals or groups with an interest in the project and describes the plan for engaging and communicating with them effectively."},
+  "SUSTAINABILITY": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["SOLUTION_DESIGN", "IMPACT_ASSESSMENT", "COSTS_BUDGETS"], "prompt_method": "build_sustainability_prompt", "description": "Explains how the project''s benefits will be maintained over time and assesses its long-term environmental and social effects, including climate resilience."},
+  "PROJECT_OPERATIONS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_project_operations_prompt", "description": "Describes the day-to-day management processes, structures, and tools that will be used to ensure the project is executed efficiently and on schedule."},
+  "PARTNERS_SMES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["SOLUTION_DESIGN"], "prompt_method": "build_partners_smes_prompt", "description": "Identifies the external organizations and Subject Matter Experts who will collaborate on the project and specifies their roles and contributions."},
+  "PROCUREMENT_SUPPLIERS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COSTS_BUDGETS"], "prompt_method": "build_procurement_prompt", "description": "Describes the processes and standards for selecting suppliers and purchasing the materials, equipment, or services required for the project."}
 }', 
 '[
-  {"label": "B - Benefits", "code": "B", "fields": ["Benefits / Goals / Value Creation", "Beneficiaries"]},
-  {"label": "E - Environment", "code": "E", "fields": ["Environmental Factors"]},
-  {"label": "C - Community", "code": "C", "fields": ["Community Profile", "Community Needs & Problems", "NGO Credentials", "Commitment / Assurance", "Capability / Skills", "Community ID & Focus", "Costs & Budgets", "Commercial / T&Cs"]},
-  {"label": "R - Risks", "code": "R", "fields": ["Relationship Management", "Risks / Mitigation"]},
-  {"label": "I - Impact", "code": "I", "fields": ["Impact Creation & Assessment"]},
-  {"label": "S - Solution", "code": "S", "fields": ["Solution / Design", "Shared Responsibility", "Stakeholders Management", "Sustainability"]},
-  {"label": "P - Project", "code": "P", "fields": ["Project Operations", "Partners / SMEs"]}
+  {
+    "label": "Value & People",
+    "theme": "B",
+    "pillars": [
+      {"label": "B - Benefits", "code": "B", "fields": ["Benefits / Goals / Value Creation", "Beneficiaries"]}
+    ]
+  },
+  {
+    "label": "Context & Credibility",
+    "theme": "EC",
+    "pillars": [
+      {"label": "E - Environment", "code": "E", "fields": ["Environmental Factors"]},
+      {"label": "C - Community", "code": "C", "fields": ["Community Profile", "Community Needs & Problems", "NGO Credentials", "Commitment / Assurance", "Capability / Skills", "Community ID & Focus", "Costs & Budgets", "Commercial / T&Cs"]}
+    ]
+  },
+  {
+    "label": "Execution & Effect",
+    "theme": "RIS",
+    "pillars": [
+      {"label": "R - Risks", "code": "R", "fields": ["Relationship Management", "Risks / Mitigation"]},
+      {"label": "I - Impact", "code": "I", "fields": ["Impact Creation & Assessment"]},
+      {"label": "S - Solution", "code": "S", "fields": ["Solution / Design", "Shared Responsibility", "Stakeholders Management", "Sustainability"]}
+    ]
+  },
+  {
+    "label": "Operations",
+    "theme": "P",
+    "pillars": [
+      {"label": "P - Project", "code": "P", "fields": ["Project Operations", "Partners / SMEs", "Procurement / Suppliers"]}
+    ]
+  }
 ]'::jsonb);
