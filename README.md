@@ -14,19 +14,24 @@ This repository contains the database initialization scripts for the Prakalpa Pr
 The system follows a **Foundation Data** strategy, pre-populating geography and social infrastructure intelligence:
 
 **Core Persistence:**
+**Core Persistence:**
 - `proposal_master` - Session tracking with `org_id` ownership, `title` identity, `blueprint_id` pinning, `location_pincode` persistence, and Lifecycle audit fields (`archived_at`).
 - `proposal_blueprints` - Dynamic configuration storage for section dependencies, UI layout, and LLM parameters.
 - `ai_response_metadata` - Versioned AI content and Manual Drafts with `source` tracking (AI vs User).
+- `proposal_targets` - Specific impact targets and beneficiary metrics for individual proposals.
 
-**Foundation Data:**
-- `lgd_master` - Authoritative geography master (Village to State) from data.gov.in.
+**Governance & Lifecycle:**
+- `proposal_activity_logs` - **Forensic Audit Trail**: Immutable write-time freezing of proposal state, actor context, and event metadata.
+- `sync_status` - Tracking for background data ingestion jobs (UDISE, JJM, LGD).
+- `ngo_onboarding_requests` / `ngo_join_requests` - Management of organization lifecycle and user access petitions.
+- `users` / `organizations` - RBAC-base identity and organizational multi-tenancy.
+
+**Foundation Data & Domain Intelligence:**
+- `lgd_master` - Authoritative geography master (Village to State) providing the primary hierarchical anchors.
+- `schools_udise_data` - **Authoritative Sync**: Detailed school infrastructure and enrollment metrics (In-Sync with LGD geography).
 - `village_demographics` - SC/ST population and household stats from NDAP/JJM.
-- `schools_udise_data` - **Authoritative Sync**: Flattened UDISE+ school index with enrollment and infrastructure (Integrated Year 12).
-- `village_amenities_raw` - Massive dataset (150+ columns) for village-level infrastructure gaps (NDAP 7121).
-
-**Domain Data Summary:**
-- `jjm_population_data` - Population data from Jal Jeevan Mission.
-- `schools_udise_data` - Detailed school infrastructure and enrollment metrics (In-Sync).
+- `village_amenities_raw` - Detailed indicators for village-level infrastructure gaps (NDAP 7121).
+- `jjm_population_data` - Augmented population metrics from Jal Jeevan Mission.
 
 
 ## 🚀 Data Foundation Setup
@@ -166,17 +171,25 @@ erDiagram
         int version
         text content
         boolean is_active
-        string openai_response_id
-        string openai_model
-        string status
-        int input_tokens
-        int output_tokens
-        int total_tokens
-        string previous_response_id
-        decimal temperature
-        decimal top_p
-        text reasoning_summary
-        int generation_time_ms
         string source
+    }
+
+    proposal_activity_logs {
+        bigint id PK
+        uuid proposal_id FK
+        string event_type
+        jsonb snapshot
+        string performed_by
+        timestamp timestamp
+    }
+
+    proposal_master ||--o{ proposal_activity_logs : "logs"
+    proposal_master ||--o{ proposal_targets : "tracks"
+    
+    sync_status {
+        int id PK
+        string table_name
+        string status
+        timestamp last_sync
     }
 ```
