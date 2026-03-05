@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS village_demographics (
     general_population INTEGER,
     source VARCHAR(100),
     status VARCHAR(50), -- SUCCESS, FAILED, PENDING
+    source_as_of_date DATE,
     fetched_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -604,6 +605,7 @@ CREATE TABLE IF NOT EXISTS proposal_master (
     location_pincode VARCHAR(20),
     title VARCHAR(500),
     document_url TEXT,
+    source_metadata JSONB DEFAULT '{}',
     status VARCHAR(50) DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -611,7 +613,7 @@ CREATE TABLE IF NOT EXISTS proposal_master (
     tags JSONB DEFAULT '[]',
     archived_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     archived_by VARCHAR(255) DEFAULT NULL,
-    CONSTRAINT chk_proposal_status CHECK (status IN ('draft', 'in_progress', 'archived', 'completed'))
+    CONSTRAINT chk_proposal_status CHECK (status IN ('draft', 'in_progress', 'archived', 'completed', 'under_review', 'rejected', 'approved', 'ready_to_publish', 'published'))
 );
 
 -- Proposal Targets (Regional Coverage)
@@ -832,7 +834,30 @@ LEFT JOIN village_demographics vd ON lm.village_code = vd.lgd_code
 ORDER BY lm.village_code, vd.total_population DESC NULLS LAST;
 
 -- ==========================================
--- 5. SEED DATA & TRIGGERS
+-- 5. AUDIT & ACTIVITY LOGS
+-- ==========================================
+
+-- Universal Proposal Activity Log (Forensic Snapshot Model)
+CREATE TABLE IF NOT EXISTS proposal_activity_logs (
+    id BIGSERIAL PRIMARY KEY,
+    proposal_id UUID,          -- Reference only (no FK/Cascade to preserve history)
+    event_type VARCHAR(50),    -- 'EXPORTED', 'CREATED', 'EDITED', etc.
+    actor_userid VARCHAR(255), -- Searchable plain-text ID
+    
+    -- Snapshots (Immutable context preserved after entity/actor deletion)
+    event_metadata JSONB,      -- Specifics about the event (e.g., download format)
+    display_text TEXT,         -- Human-readable frozen string (e.g. "Exported as PDF")
+    proposal_snapshot JSONB,   -- { "title": "...", "domain": "...", "ngo": "..." }
+    actor_snapshot JSONB,      -- { "userid": "ravi", "name": "Ravi Murthy", "role": "ADMIN" }
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposal_activity_proposal_id ON proposal_activity_logs(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_proposal_activity_event_type ON proposal_activity_logs(event_type);
+
+-- ==========================================
+-- 6. SEED DATA & TRIGGERS
 -- ==========================================
 
 -- Initial Thematic Domains
