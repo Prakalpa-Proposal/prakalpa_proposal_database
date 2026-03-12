@@ -2,6 +2,37 @@
 -- Consolidated Authoritative Version - 2026-02-06
 
 -- ==========================================
+-- 0. DATABASE UTILITIES (Shared Functions)
+-- ==========================================
+
+-- Standard function for auto-updating timestamps
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to keep only 5 versions of each section for a proposal
+CREATE OR REPLACE FUNCTION public.cleanup_old_versions()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM proposal_sections
+    WHERE proposal_id = NEW.proposal_id
+      AND section_code = NEW.section_code
+      AND id NOT IN (
+          SELECT id FROM proposal_sections
+          WHERE proposal_id = NEW.proposal_id
+            AND section_code = NEW.section_code
+          ORDER BY version DESC
+          LIMIT 5
+      );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==========================================
 -- 1. GEOGRAPHY & MASTER INFRASTRUCTURE
 -- ==========================================
 
@@ -628,8 +659,8 @@ CREATE TABLE IF NOT EXISTS proposal_targets (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- AI Response Metadata (For refining prompts)
-CREATE TABLE IF NOT EXISTS ai_response_metadata (
+-- Proposal Sections (Content & Metadata)
+CREATE TABLE IF NOT EXISTS proposal_sections (
     id BIGSERIAL PRIMARY KEY,
     proposal_id UUID REFERENCES proposal_master(proposal_id) ON DELETE CASCADE NOT NULL,
     section_code VARCHAR(100) NOT NULL,
@@ -654,6 +685,11 @@ CREATE TABLE IF NOT EXISTS ai_response_metadata (
     structured_data JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TRIGGER trigger_cleanup_versions
+    AFTER INSERT ON proposal_sections
+    FOR EACH ROW
+    EXECUTE FUNCTION cleanup_old_versions();
 
 -- ==========================================
 -- 4. SCHOOLS UDISE DATA & ENRICHMENT
@@ -722,6 +758,7 @@ CREATE TABLE IF NOT EXISTS schools_udise_data (
     udise_code VARCHAR(20) NOT NULL,
     school_id INTEGER, -- UDISE internal school ID
     year_id INTEGER NOT NULL, -- 11=2024-25, 12=2025-26
+    effective_year INTEGER,
     
     -- Scraping Metadata
     last_scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -827,6 +864,7 @@ SELECT DISTINCT ON (lm.village_code)
     lm.subdistrict_name AS taluk,
     lm.district_name AS district,
     lm.state_name AS state,
+    lm.pincode,
     vd.total_population AS population,
     vd.households
 FROM lgd_master lm
@@ -897,14 +935,6 @@ VALUES (1, 'admin@tech4socialgood.org', 'pbkdf2:sha256:600000$admin_hash_placeho
 ON CONFLICT DO NOTHING;
 
 -- Update Trigger for proposal_master
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
 CREATE TRIGGER update_proposal_master_updated_at
     BEFORE UPDATE ON proposal_master
     FOR EACH ROW

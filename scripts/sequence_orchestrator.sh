@@ -8,7 +8,7 @@ LOG_DIR="../logs/udise_scraper"
 GOA_PID_FILE="enrichment_goa.pid"
 
 # State Queue in Order of Priority
-STATES=("GOA" "KARNATAKA" "KERALA" "ANDHRA PRADESH" "TELANGANA" "TAMIL NADU")
+STATES=("GOA" "KARNATAKA" "KERALA" "ANDHRA PRADESH" "TELANGANA" "TAMILNADU")
 
 echo "$(date): --- ORCHESTRATOR STARTED ---" >> $LOG_DIR/orchestrator.log
 
@@ -29,7 +29,7 @@ for STATE in "${STATES[@]}"; do
     STATE_FILE_NAME=$(echo "$STATE" | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
     echo "$(date): Launching $STATE State Push..." >> $LOG_DIR/orchestrator.log
     
-    nohup $VENV_PYTHON $SCRIPT --state "$STATE" > $LOG_DIR/enrich_$STATE_FILE_NAME.log 2>&1 &
+    nohup $VENV_PYTHON $SCRIPT --state "$STATE" --mode recovery > $LOG_DIR/enrich_$STATE_FILE_NAME.log 2>&1 &
     CURRENT_PID=$!
     echo $CURRENT_PID > "enrichment_${STATE_FILE_NAME}.pid"
     

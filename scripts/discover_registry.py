@@ -25,9 +25,10 @@ STATES = {
     "GOA": 130,
     "KERALA": 132,
     "ANDHRA PRADESH": 128,
-    "TAMIL NADU": 133,
+    "TAMILNADU": 133,
     "TELANGANA": 136
 }
+CURRENT_YEAR_ID = 12
 
 # Logger Setup
 logging.basicConfig(
@@ -83,7 +84,7 @@ def upsert_school(conn, s, d, b, c):
     try:
         cursor.execute("""
             INSERT INTO schools_udise_data (
-                school_id, year_id, udise_code, school_name, school_status, status_name, last_modified,
+                school_id, year_id, effective_year, udise_code, school_name, school_status, status_name, last_modified,
                 state_id, state_cd, state_name,
                 district_id, district_cd, district_name,
                 block_id, block_cd, block_name,
@@ -101,7 +102,7 @@ def upsert_school(conn, s, d, b, c):
                 is_operational_2018_to_19, is_operational_2019_to_20, is_operational_2020_to_21, is_operational_2021_to_22, is_operational_2022_to_23,
                 scrape_status
             ) VALUES (
-                %s, 12, %s, %s, %s, %s, %s,
+                %s, %s, NULL, %s, %s, %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s,
@@ -120,6 +121,10 @@ def upsert_school(conn, s, d, b, c):
                 %s
             )
             ON CONFLICT (school_id, year_id) DO UPDATE SET
+                effective_year = CASE 
+                    WHEN schools_udise_data.effective_year IS NULL THEN EXCLUDED.effective_year 
+                    ELSE schools_udise_data.effective_year 
+                END,
                 udise_code = EXCLUDED.udise_code,
                 school_name = EXCLUDED.school_name,
                 school_status = EXCLUDED.school_status,
@@ -135,7 +140,7 @@ def upsert_school(conn, s, d, b, c):
                     ELSE EXCLUDED.scrape_status 
                 END;
         """, (
-            s.get("schoolId"), udise_code, s.get("schoolName"), school_status, status_name, s.get("lastmodifiedTime"),
+            s.get("schoolId"), CURRENT_YEAR_ID, udise_code, s.get("schoolName"), school_status, status_name, s.get("lastmodifiedTime"),
             s.get("stateId"), s.get("stateCd"), s.get("stateName"),
             s.get("districtId"), s.get("districtCd"), s.get("districtName"),
             s.get("blockId"), s.get("blockCd"), b['blockName'],  # Use blockName from hierarchy loop
