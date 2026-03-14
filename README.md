@@ -58,6 +58,9 @@ Before generating proposals, you must initialize the geographic and demographic 
    
    # Pass 2: Deep Mining (Enrich infrastructure & student logs)
    python enrich_registry.py --state KARNATAKA
+   
+   # Optional: Recovery Mode (Probe previous academic years if current data is absent)
+   python enrich_registry.py --state KARNATAKA --mode recovery
    ```
 
 4. **Master Setup**:
@@ -85,6 +88,7 @@ erDiagram
         string udise_code
         string school_name
         int total_students
+        int effective_year
         jsonb basic_info
         jsonb facility_data
         string scrape_status
@@ -157,11 +161,11 @@ erDiagram
         string status
         timestamp created_at
         timestamp updated_at
-        string created_by
+        int created_by
         string granularity
         string location_pincode
         timestamp archived_at
-        string archived_by
+        int archived_by
     }
 
     ai_response_metadata {
@@ -179,7 +183,7 @@ erDiagram
         uuid proposal_id FK
         string event_type
         jsonb snapshot
-        string performed_by
+        int actor_id
         timestamp timestamp
     }
 

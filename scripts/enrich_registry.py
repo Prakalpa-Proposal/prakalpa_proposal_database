@@ -296,8 +296,8 @@ def mine_state(state_name, mode='normal', limit=None):
     conn = get_db_connection() ; cursor = conn.cursor()
     
     if mode == 'recovery':
-        # Broad Recovery Query: Target all non-closed schools to ensure uniformity
-        query = "SELECT school_id, udise_code FROM schools_udise_data WHERE state_name = %s AND scrape_status IN ('pending', 'partial', 'success') ORDER BY scrape_status ASC, udise_code ASC"
+        # Broad Recovery Query: Target all non-closed schools where recovery hasn't run yet
+        query = "SELECT school_id, udise_code FROM schools_udise_data WHERE state_name = %s AND scrape_status IN ('pending', 'partial', 'success') AND effective_year IS NULL ORDER BY scrape_status ASC, udise_code ASC"
     else:
         query = "SELECT school_id, udise_code FROM schools_udise_data WHERE state_name = %s AND (scrape_status = 'pending' OR scrape_status = 'partial') ORDER BY scrape_status DESC, udise_code ASC"
     

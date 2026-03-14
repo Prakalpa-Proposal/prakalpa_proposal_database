@@ -537,7 +537,7 @@ CREATE TABLE IF NOT EXISTS organizations (
     spent_tokens INTEGER DEFAULT 0,
     logo_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255),
+    created_by INTEGER REFERENCES users(id),
     settings JSONB DEFAULT '{}'
 );
 
@@ -562,7 +562,7 @@ CREATE TABLE IF NOT EXISTS users (
     org_id INTEGER REFERENCES organizations(id),
     active BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255)
+    created_by INTEGER REFERENCES users(id)
 );
 
 -- NGO Registration Workflow Tables
@@ -584,7 +584,7 @@ CREATE TABLE IF NOT EXISTS ngo_onboarding_requests (
     status VARCHAR(50) DEFAULT 'PENDING',
     requested_at TIMESTAMP DEFAULT NOW(),
     reviewed_at TIMESTAMP,
-    reviewed_by VARCHAR(255),
+    reviewed_by INTEGER REFERENCES users(id),
     rejection_reason TEXT,
     created_org_id INTEGER REFERENCES organizations(id)
 );
@@ -599,7 +599,7 @@ CREATE TABLE IF NOT EXISTS ngo_join_requests (
     status VARCHAR(50) DEFAULT 'PENDING',
     requested_at TIMESTAMP DEFAULT NOW(),
     reviewed_at TIMESTAMP,
-    reviewed_by VARCHAR(255),
+    reviewed_by INTEGER REFERENCES users(id),
     rejection_reason TEXT,
     UNIQUE(user_id, org_id, status)
 );
@@ -640,10 +640,10 @@ CREATE TABLE IF NOT EXISTS proposal_master (
     status VARCHAR(50) DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by VARCHAR(255),
+    created_by INTEGER REFERENCES users(id),
     tags JSONB DEFAULT '[]',
     archived_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-    archived_by VARCHAR(255) DEFAULT NULL,
+    archived_by INTEGER REFERENCES users(id) DEFAULT NULL,
     CONSTRAINT chk_proposal_status CHECK (status IN ('draft', 'in_progress', 'archived', 'completed', 'under_review', 'rejected', 'approved', 'ready_to_publish', 'published'))
 );
 
@@ -685,6 +685,9 @@ CREATE TABLE IF NOT EXISTS proposal_sections (
     structured_data JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Ensure only one active version per section per proposal
+ALTER TABLE proposal_sections ADD CONSTRAINT unique_active_section UNIQUE (proposal_id, section_code) WHERE (is_active = TRUE);
 
 CREATE TRIGGER trigger_cleanup_versions
     AFTER INSERT ON proposal_sections
@@ -880,7 +883,7 @@ CREATE TABLE IF NOT EXISTS proposal_activity_logs (
     id BIGSERIAL PRIMARY KEY,
     proposal_id UUID,          -- Reference only (no FK/Cascade to preserve history)
     event_type VARCHAR(50),    -- 'EXPORTED', 'CREATED', 'EDITED', etc.
-    actor_userid VARCHAR(255), -- Searchable plain-text ID
+    actor_id INTEGER REFERENCES users(id), -- Reference to users.id
     
     -- Snapshots (Immutable context preserved after entity/actor deletion)
     event_metadata JSONB,      -- Specifics about the event (e.g., download format)
@@ -999,3 +1002,11 @@ VALUES ('V1.0', TRUE, TRUE, '{
     ]
   }
 ]'::jsonb);
+-- ==========================================
+-- 6. SEED DATA
+-- ==========================================
+
+-- System User for automated actions (Sentinel ID -1)
+INSERT INTO users (id, userid, first_name, last_name, email, role, active) 
+VALUES (-1, 'system', 'System', 'Automated', 'system@prakalpa.org', 'SYSTEM', true)
+ON CONFLICT (id) DO NOTHING;

@@ -7,8 +7,8 @@ SCRIPT="enrich_registry.py"
 LOG_DIR="../logs/udise_scraper"
 GOA_PID_FILE="enrichment_goa.pid"
 
-# State Queue in Order of Priority
-STATES=("GOA" "KARNATAKA" "KERALA" "ANDHRA PRADESH" "TELANGANA" "TAMILNADU")
+# State Queue in Order of Priority (Note: GOA 100% recovered)
+STATES=("KARNATAKA" "KERALA" "ANDHRA PRADESH" "TELANGANA" "TAMILNADU")
 
 echo "$(date): --- ORCHESTRATOR STARTED ---" >> $LOG_DIR/orchestrator.log
 
