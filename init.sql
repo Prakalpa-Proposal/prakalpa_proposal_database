@@ -555,7 +555,7 @@ CREATE TABLE IF NOT EXISTS users (
     password VARCHAR(255), -- Aligned with models.py
     first_name VARCHAR(100),
     last_name VARCHAR(100),
-    email VARCHAR(150) NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
     phone VARCHAR(20),
     role VARCHAR(50) DEFAULT 'USER',
     is_org_admin BOOLEAN DEFAULT FALSE,
