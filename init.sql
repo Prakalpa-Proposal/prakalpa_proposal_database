@@ -1010,3 +1010,24 @@ VALUES ('V1.0', TRUE, TRUE, '{
 INSERT INTO users (id, userid, first_name, last_name, email, role, active) 
 VALUES (-1, 'system', 'System', 'Automated', 'system@prakalpa.org', 'SYSTEM', true)
 ON CONFLICT (id) DO NOTHING;
+
+-- ==========================================
+-- 7. VILLAGE AMENITIES VIEWS (2026-03-19)
+-- ==========================================
+
+CREATE OR REPLACE VIEW village_amenities_view AS
+SELECT 
+    state,
+    district,
+    sub_district,
+    ulb_rlb_village AS village,
+    (state || '-' || district || '-' || sub_district || '-' || ulb_rlb_village) AS composite_key,
+    total_geographical_area_covered_by_village AS area_ha,
+    number_of_village_households AS households,
+    name_of_the_nearest_statutory_town AS nearest_town_name,
+    distance_between_village_and_nearest_statutory_town AS distance_to_nearest_town_km,
+    name_of_the_district_head_quarter_of_village AS district_hq_name,
+    distance_between_the_village_and_district_head_quarter AS distance_to_district_hq_km,
+    name_of_the_subdistrict_head_quarter_of_village AS taluk_hq_name,
+    distance_between_village_and_sub_district_head_quarter AS distance_to_taluk_hq_km
+FROM village_amenities_raw;
