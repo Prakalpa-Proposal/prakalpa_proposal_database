@@ -1031,3 +1031,28 @@ SELECT
     name_of_the_subdistrict_head_quarter_of_village AS taluk_hq_name,
     distance_between_village_and_sub_district_head_quarter AS distance_to_taluk_hq_km
 FROM village_amenities_raw;
+
+-- ==========================================
+-- 8. PROPOSAL WORKFLOW RUN TRACKING
+-- ==========================================
+
+ALTER TABLE proposal_sections ADD COLUMN IF NOT EXISTS downstream_summary JSONB DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS blueprint_topology (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    blueprint_id UUID NOT NULL REFERENCES proposal_blueprints(id) ON DELETE CASCADE,
+    topology_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS proposal_workflow_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proposal_id UUID NOT NULL REFERENCES proposal_master(proposal_id) ON DELETE CASCADE,
+    blueprint_id UUID NOT NULL REFERENCES proposal_blueprints(id),
+    topology_id UUID NOT NULL REFERENCES blueprint_topology(id),
+    status VARCHAR(50) NOT NULL DEFAULT 'running', 
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    initiated_by INTEGER REFERENCES users(id),
+    section_execution_state JSONB NOT NULL DEFAULT '{}'::jsonb
+);
