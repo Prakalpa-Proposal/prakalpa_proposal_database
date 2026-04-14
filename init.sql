@@ -1001,7 +1001,7 @@ VALUES ('V1.0', TRUE, TRUE, '{
       {"label": "P - Project", "code": "P", "fields": ["Project Operations", "Partners / SMEs", "Procurement / Suppliers"]}
     ]
   }
-]'::jsonb);
+]', '{"full_narrative_depth": -1}');
 -- ==========================================
 -- 6. SEED DATA
 -- ==========================================
