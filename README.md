@@ -17,8 +17,10 @@ The system follows a **Foundation Data** strategy, pre-populating geography and 
 **Core Persistence:**
 - `proposal_master` - Session tracking with `org_id` ownership, `title` identity, `blueprint_id` pinning, `location_pincode` persistence, and Lifecycle audit fields (`archived_at`).
 - `proposal_blueprints` - Dynamic configuration storage for section dependencies, UI layout, and LLM parameters.
-- `ai_response_metadata` - Versioned AI content and Manual Drafts with `source` tracking (AI vs User).
+- `proposal_sections` - Versioned AI content and Manual Drafts with `source` tracking (AI vs User) and `downstream_summary` for parallel context passing.
 - `proposal_targets` - Specific impact targets and beneficiary metrics for individual proposals.
+- `blueprint_topology` - [NEW] Adjacency Map (DAG) storage for blueprint section dependencies.
+- `proposal_workflow_runs` - [NEW] Real-time state machine tracking asynchronous parallel generation tasks.
 
 **Governance & Lifecycle:**
 - `proposal_activity_logs` - **Forensic Audit Trail**: Immutable write-time freezing of proposal state, actor context, and event metadata.
@@ -144,7 +146,9 @@ erDiagram
     }
 
     organizations ||--o{ proposal_master : "creates"
-    proposal_master ||--o{ ai_response_metadata : "contains"
+    proposal_master ||--o{ proposal_sections : "contains"
+    proposal_blueprints ||--o{ blueprint_topology : "mapped-by"
+    proposal_master ||--o{ proposal_workflow_runs : "executes-via"
     proposal_master {
         uuid proposal_id PK
         uuid blueprint_id FK
@@ -168,7 +172,7 @@ erDiagram
         int archived_by
     }
 
-    ai_response_metadata {
+    proposal_sections {
         bigint id PK
         uuid proposal_id FK
         string section_code
@@ -176,6 +180,25 @@ erDiagram
         text content
         boolean is_active
         string source
+        jsonb downstream_summary
+    }
+
+    blueprint_topology {
+        uuid id PK
+        uuid blueprint_id FK
+        jsonb topology_data
+        timestamp created_at
+    }
+
+    proposal_workflow_runs {
+        uuid id PK
+        uuid proposal_id FK
+        uuid blueprint_id FK
+        uuid topology_id FK
+        string status
+        jsonb section_execution_state
+        timestamp started_at
+        timestamp completed_at
     }
 
     proposal_activity_logs {
