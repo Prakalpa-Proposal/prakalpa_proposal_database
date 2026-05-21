@@ -683,6 +683,7 @@ CREATE TABLE IF NOT EXISTS proposal_sections (
     source VARCHAR(50) DEFAULT 'AI_GENERATED',
     generation_time_ms INTEGER,
     structured_data JSONB,
+    user_hints TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
