@@ -1,8 +1,8 @@
 [← Back to Main README](../README.md)
 
-# Prakalpa Proposal Database
+# Pariyojana Prastavane.AI Database
 
-This repository contains the database initialization scripts for the Prakalpa Proposal application.
+This repository contains the database initialization scripts for the Pariyojana Prastavane.AI application.
 
 ## Contents
 - `init.sql`: Main entry point for PostgreSQL initialization.
