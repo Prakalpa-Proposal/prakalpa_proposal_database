@@ -616,6 +616,8 @@ CREATE TABLE IF NOT EXISTS proposal_blueprints (
     ui_config JSONB,
     is_default BOOLEAN DEFAULT FALSE,
     is_published BOOLEAN DEFAULT FALSE,
+    context_strategy JSONB DEFAULT '{"full_narrative_depth": -1}',
+    use_graph BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -945,15 +947,15 @@ CREATE TRIGGER update_proposal_master_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Seed V1.0 Blueprint (Enriched BE CRISP Model)
-INSERT INTO proposal_blueprints (version_label, is_default, is_published, sections_config, ui_config)
+INSERT INTO proposal_blueprints (version_label, is_default, is_published, sections_config, ui_config, context_strategy, use_graph)
 VALUES ('V1.0', TRUE, TRUE, '{
-  "RAW_DATA_SKELETON": {"model": "gpt-4o-mini", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt", "description": "Foundational data verification layer. Establishes LGD codes, demographics, and site-specific facts."},
+  "RAW_DATA_SKELETON": {"model": "gpt-4o-mini", "min_words": 100, "temperature": 0.2, "dependencies": [], "prompt_method": "build_raw_data_skeleton_prompt", "requires_graph_engine": false, "description": "Foundational data verification layer. Establishes LGD codes, demographics, and site-specific facts."},
   "COMMUNITY_PROFILE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.3, "dependencies": ["RAW_DATA_SKELETON"], "prompt_method": "build_community_profile_prompt", "requires_raw_data": true, "description": "A demographic snapshot of the target area, culture, and socioeconomic status."},
   "NEEDS_ASSESSMENT": {"model": "gpt-4o-mini", "min_words": 300, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_needs_prompt", "description": "Identifies and validates the specific issues and challenges within the community that the project aims to address."},
   "BENEFITS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.7, "dependencies": ["NEEDS_ASSESSMENT", "SOLUTION_DESIGN"], "prompt_method": "build_benefits_prompt", "description": "Defines the specific, positive outcomes the project intends to achieve to solve a problem."},
   "BENEFICIARIES": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["COMMUNITY_PROFILE", "SOLUTION_DESIGN"], "prompt_method": "build_beneficiaries_prompt", "requires_raw_data": true, "description": "Identifies the specific individuals or groups who will directly receive help or support from the project''s activities and outcomes."},
   "ENVIRONMENTAL_FACTORS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_environmental_factors_prompt", "description": "Analyzes the external conditions, such as ecological, social, or legal aspects, that could affect the project''s success or impact."},
-  "NGO_CREDENTIALS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": [], "prompt_method": "build_ngo_credentials_prompt", "description": "Details the NGO''s track record, internal management structures, ethical standards, and measures taken to ensure transparency and accountability."},
+  "NGO_CREDENTIALS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.4, "dependencies": [], "prompt_method": "build_ngo_credentials_prompt", "requires_graph_engine": false, "description": "Details the NGO''s track record, internal management structures, ethical standards, and measures taken to ensure transparency and accountability."},
   "COMMITMENT_ASSURANCE": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_commitment_assurance_prompt", "description": "Demonstrates the organization''s dedication and provides evidence-based confidence that the project''s goals will be met reliably."},
   "CAPABILITY_SKILLS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.6, "dependencies": ["NGO_CREDENTIALS"], "prompt_method": "build_capability_skills_prompt", "description": "Showcases the specific expertise, technical skills, and past achievements of the organization and team members relevant to the project."},
   "COMMUNITY_ID_FOCUS": {"model": "gpt-4o-mini", "min_words": 500, "temperature": 0.5, "dependencies": ["COMMUNITY_PROFILE"], "prompt_method": "build_community_id_focus_prompt", "description": "Explains how the target community was selected and ensures the project remains centered on their most pressing needs throughout its lifecycle."},
@@ -1002,7 +1004,7 @@ VALUES ('V1.0', TRUE, TRUE, '{
       {"label": "P - Project", "code": "P", "fields": ["Project Operations", "Partners / SMEs", "Procurement / Suppliers"]}
     ]
   }
-]', '{"full_narrative_depth": -1}');
+]', '{"full_narrative_depth": -1}', TRUE);
 -- ==========================================
 -- 6. SEED DATA
 -- ==========================================
