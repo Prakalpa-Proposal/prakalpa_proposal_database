@@ -646,6 +646,7 @@ CREATE TABLE IF NOT EXISTS proposal_master (
     tags JSONB DEFAULT '[]',
     archived_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     archived_by INTEGER REFERENCES users(id) DEFAULT NULL,
+    token_metadata JSONB DEFAULT '{"title_inference": {"history": [], "input": 0, "output": 0, "total": 0}, "section_inference": {"input": 0, "output": 0, "total": 0}}'::jsonb,
     CONSTRAINT chk_proposal_status CHECK (status IN ('draft', 'in_progress', 'archived', 'completed', 'under_review', 'rejected', 'approved', 'ready_to_publish', 'published'))
 );
 
@@ -678,6 +679,7 @@ CREATE TABLE IF NOT EXISTS proposal_sections (
     input_tokens INTEGER,
     output_tokens INTEGER,
     total_tokens INTEGER,
+    token_metadata JSONB,
     previous_response_id VARCHAR(255),
     temperature NUMERIC(3, 2),
     top_p NUMERIC(3, 2),
